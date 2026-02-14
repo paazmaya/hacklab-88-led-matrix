@@ -1,0 +1,12 @@
+[build]
+target = "xtensa-esp32-none-elf"
+
+[target.xtensa-esp32-none-elf]
+linker = "ldproxy"
+runner = "espflash flash --monitor"
+
+[env]
+ESP_IDF_VERSION = "v5.2.2"
+
+[unstable]
+build-std = ["std", "panic_abort"]
