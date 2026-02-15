@@ -1,29 +1,30 @@
-//! ESP32 LED Matrix Controller
+//! ESP32-S2 LED Matrix Controller
 //!
 //! This application controls an 88x88 RGB LED matrix display via a web interface.
 //! It connects to WiFi and serves an HTTP server where users can input text
 //! to display on the LED matrix.
+//!
+//! Built with pure Rust using esp-hal (no ESP-IDF required).
+//!
+//! ## Pin Configuration (ESP32-S2)
+//! Uses GPIO 4-16 which are available on ESP32-S2 (avoiding USB pins 18-20)
 
-use anyhow::Result;
-use esp_idf_hal::delay::FreeRtos;
-use esp_idf_hal::gpio::*;
-use esp_idf_hal::peripherals::Peripherals;
-use esp_idf_svc::eventloop::EspSystemEventLoop;
-use esp_idf_svc::netif::{EspNetif, NetifConfiguration, NetifStackMode};
-use esp_idf_svc::nvs::EspDefaultNvsPartition;
-use esp_idf_svc::wifi::{AuthMethod, Configuration, EspWifi};
-use esp_idf_sys::{self as sys};
-use log::{error, info, warn};
-use std::cell::RefCell;
-use std::sync::{Arc, Mutex};
+#![no_std]
+#![no_main]
+
+use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
+use esp_backtrace as _;
+use esp_hal::clock::CpuClock;
+use esp_hal::gpio::{Level, Output, OutputConfig};
+use log::info;
 
 mod font;
 mod http_server;
 mod led_matrix;
 mod wifi;
 
-use http_server::start_http_server;
-use led_matrix::LedMatrix;
+use crate::led_matrix::LedMatrix;
 
 /// LED Matrix dimensions
 pub const MATRIX_WIDTH: usize = 88;
@@ -33,82 +34,74 @@ pub const MATRIX_HEIGHT: usize = 88;
 const WIFI_SSID: &str = "YOUR_WIFI_SSID";
 const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
 
-/// Shared display text buffer
-static DISPLAY_TEXT: Mutex<String> = Mutex::new(String::new());
+/// Global display text buffer
+static DISPLAY_TEXT: embassy_sync::mutex::Mutex<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    heapless::String<32>,
+> = embassy_sync::mutex::Mutex::new(heapless::String::new());
 
-fn main() -> Result<()> {
-    // Initialize ESP-IDF
-    esp_idf_sys::link_patches();
+#[esp_hal_embassy::main]
+async fn main(spawner: Spawner) {
+    // Initialize ESP32 with default clock configuration
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
     // Initialize logging
-    esp_idf_svc::log::EspLogger::initialize_default();
-
+    esp_println::logger::init_logger_from_env();
     info!("=== ESP32 LED Matrix Controller ===");
-    info!("Starting initialization...");
+    info!("Pure Rust build with esp-hal");
 
-    // Get peripherals
-    let peripherals = Peripherals::take()?;
-    let sysloop = EspSystemEventLoop::take()?;
-    let nvs = EspDefaultNvsPartition::take()?;
+    // Initialize LED matrix GPIO pins (ESP32-S2 compatible)
+    let mut led_matrix = LedMatrix::new(
+        Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()), // GCLK
+        Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default()), // DCLK
+        Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default()), // LE
+        Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default()), // A0
+        Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default()), // A1
+        Output::new(peripherals.GPIO9, Level::Low, OutputConfig::default()), // A2
+        Output::new(peripherals.GPIO10, Level::Low, OutputConfig::default()), // A3
+        Output::new(peripherals.GPIO11, Level::Low, OutputConfig::default()), // DR1
+        Output::new(peripherals.GPIO12, Level::Low, OutputConfig::default()), // DG1
+        Output::new(peripherals.GPIO13, Level::Low, OutputConfig::default()), // DB1
+        Output::new(peripherals.GPIO14, Level::Low, OutputConfig::default()), // DR2
+        Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default()), // DG2
+        Output::new(peripherals.GPIO16, Level::Low, OutputConfig::default()), // DB2
+    );
 
-    // Initialize WiFi
-    info!("Connecting to WiFi: {}", WIFI_SSID);
-    let _wifi = wifi::connect_wifi(peripherals.modem, sysloop, nvs, WIFI_SSID, WIFI_PASSWORD)?;
-    info!("WiFi connected successfully!");
+    // Initialize WiFi and start network task
+    info!("Initializing WiFi...");
+    let _wifi_stack = wifi::init_wifi_inline(
+        spawner,
+        peripherals.TIMG1,
+        peripherals.RNG,
+        peripherals.WIFI,
+    );
 
-    // Get IP address
-    let netif = EspNetif::new_with_conf(&NetifConfiguration {
-        ip_configuration: esp_idf_svc::ipv4::Configuration::Dhcp,
-        ..Default::default()
-    })?;
+    // Wait for WiFi connection
+    info!("Waiting for WiFi connection...");
+    wifi::wait_for_connection().await;
+    info!("WiFi connected!");
 
-    // Initialize LED matrix
-    // NOTE: GPIO34-39 are INPUT ONLY on ESP32, so we use GPIO13 for DB2
-    info!("Initializing LED matrix driver...");
-    let led_matrix = Arc::new(Mutex::new(LedMatrix::new(
-        peripherals.pins.gpio4,  // GCLK  - Multiplex clock
-        peripherals.pins.gpio5,  // DCLK  - Data clock
-        peripherals.pins.gpio18, // LE    - Latch Enable
-        peripherals.pins.gpio19, // A0    - Address bit 0
-        peripherals.pins.gpio21, // A1    - Address bit 1
-        peripherals.pins.gpio22, // A2    - Address bit 2
-        peripherals.pins.gpio23, // A3    - Address bit 3
-        peripherals.pins.gpio25, // DR1   - Red data chain 1
-        peripherals.pins.gpio26, // DG1   - Green data chain 1
-        peripherals.pins.gpio27, // DB1   - Blue data chain 1
-        peripherals.pins.gpio32, // DR2   - Red data chain 2
-        peripherals.pins.gpio33, // DG2   - Green data chain 2
-        peripherals.pins.gpio13, // DB2   - Blue data chain 2 (NOT gpio34!)
-    )?));
+    // Get and display IP address
+    if let Some(ip) = wifi::get_ip_address() {
+        info!("IP Address: {}", ip);
+    }
 
-    // Start display refresh task
-    let matrix_clone = led_matrix.clone();
-    std::thread::spawn(move || {
-        info!("Display refresh task started");
-        loop {
-            if let Ok(mut matrix) = matrix_clone.lock() {
-                // Get current display text
-                if let Ok(text) = DISPLAY_TEXT.lock() {
-                    matrix.display_text(&text);
-                }
-                // Refresh the display
-                if let Err(e) = matrix.refresh() {
-                    error!("Display refresh error: {:?}", e);
-                }
-            }
-            FreeRtos::delay_ms(10);
-        }
-    });
-
-    // Start HTTP server
-    info!("Starting HTTP server...");
-    let server = start_http_server(led_matrix.clone())?;
+    // Spawn the HTTP server task
+    spawner.spawn(http_server::http_server_task()).ok();
 
     info!("=== System Ready ===");
     info!("Open http://<ESP32_IP>/ in your browser to control the display");
 
-    // Keep main thread alive
+    // Main display refresh loop
     loop {
-        FreeRtos::delay_ms(1000);
+        // Get current display text
+        let text = DISPLAY_TEXT.lock().await.clone();
+
+        // Update display
+        led_matrix.display_text(&text);
+        led_matrix.refresh();
+
+        // Small delay to prevent watchdog
+        Timer::after(Duration::from_millis(1)).await;
     }
 }
