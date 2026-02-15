@@ -10,11 +10,11 @@ description = "ESP32-C3 Rust application for controlling 88x88 RGB LED matrix wi
 # ESP32 HAL and support crates
 esp-hal = { version = "1.0.0-rc.0", features = ["esp32c3", "unstable"] }
 esp-hal-embassy = { version = "0.9.1", features = ["esp32c3"] }
-esp-backtrace = { version = "0.18", features = ["esp32c3", "panic-handler", "println"] }
-esp-println = { version = "0.16", features = ["esp32c3", "log-04"] }
+esp-backtrace = { version = "0.18.1", features = ["esp32c3", "panic-handler", "println"] }
+esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"] }
 
 # WiFi and networking
-esp-wifi = { version = "0.15", features = ["esp32c3", "wifi", "smoltcp"] }
+esp-wifi = { version = "0.15.1", features = ["esp32c3", "wifi", "smoltcp"] }
 smoltcp = { version = "0.12", default-features = false, features = [
     "proto-ipv4",
     "proto-dhcpv4",
@@ -26,16 +26,16 @@ smoltcp = { version = "0.12", default-features = false, features = [
 
 # Embassy async runtime
 embassy-executor = "0.7"
-embassy-time = "0.4"
-embassy-net = { version = "0.8", features = ["proto-ipv4", "tcp", "dhcpv4-hostname", "medium-ethernet"] }
+embassy-time = "0.5"
+embassy-net = { version = "0.8.0", features = ["proto-ipv4", "tcp", "dhcpv4-hostname", "medium-ethernet"] }
 embassy-sync = "0.6"
 
 # Utilities
 log = "0.4"
 critical-section = "1.2"
 static_cell = "2.1"
-heapless = "0.8"
-embedded-io-async = "0.6"
+heapless = "0.9"
+embedded-io-async = "0.7"
 
 [profile.dev]
 opt-level = "s"
