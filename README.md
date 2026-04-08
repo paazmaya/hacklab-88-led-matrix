@@ -373,6 +373,75 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 - [esp-hal Documentation](https://docs.esp-rs.org/esp-hal/)
 - [esp-rs Community](https://github.com/esp-rs)
 
+## Running Tests
+
+This project includes comprehensive unit and integration tests for the testable components (primarily the font module).
+
+### Unit Tests (Font Module)
+To run all unit tests in the library:
+
+```bash
+cargo test --lib --no-default-features --target x86_64-pc-windows-msvc
+```
+
+On Linux, replace the target:
+```bash
+cargo test --lib --no-default-features --target x86_64-unknown-linux-gnu
+```
+
+On macOS:
+```bash
+cargo test --lib --no-default-features --target aarch64-apple-darwin
+# or for Intel Macs:
+cargo test --lib --no-default-features --target x86_64-apple-darwin
+```
+
+### Integration Tests
+To run integration tests:
+
+```bash
+cargo test --test integration_tests --no-default-features --target x86_64-pc-windows-msvc
+```
+
+### All Tests Together
+To run both unit and integration tests:
+
+```bash
+cargo test --no-default-features --target x86_64-pc-windows-msvc
+```
+
+### Build Binary for ESP32
+To build the embedded binary for ESP32:
+
+```bash
+cargo build --release --target riscv32imc-unknown-none-elf
+```
+
+Or simply:
+```bash
+cargo build --release
+```
+
+(The default target is configured in `.cargo/config.toml`)
+
+### Why `--no-default-features`?
+
+The project has embedded-specific dependencies (esp-hal, esp-wifi, etc.) that form the default features. Since these cannot compile for the host architecture (Windows/Linux/macOS), we disable them when running tests. The font module is pure Rust and doesn't depend on these features.
+
+## Continuous Integration
+
+Tests should be run before updating dependencies. Use these commands:
+
+```bash
+# Run all tests
+cargo test --no-default-features --target x86_64-pc-windows-msvc
+
+# Build for embedded
+cargo build --release --target riscv32imc-unknown-none-elf
+```
+
+All tests must pass before deploying to ESP32.
+
 ## License
 
 MIT License
