@@ -1,158 +1,105 @@
-//! WiFi connectivity module using esp-wifi
+//! WiFi connectivity module using esp-radio 0.17.0
 //!
-//! Handles WiFi connection using the pure Rust esp-wifi crate with embassy-net.
+//! Handles WiFi connection using the pure Rust esp-radio crate with embassy-net.
+
+extern crate alloc;
 
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
-use esp_hal::rng::Rng;
-use esp_wifi::{
-    init,
-    wifi::{ClientConfiguration, Configuration, WifiController},
-};
+use esp_radio::Controller;
+use esp_radio::wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent};
 use log::{error, info};
 use static_cell::StaticCell;
 
 use crate::WIFI_PASSWORD;
 use crate::WIFI_SSID;
 
+/// Global radio controller — must outlive WifiController and WifiDevice
+static RADIO_CONTROLLER: StaticCell<Controller<'static>> = StaticCell::new();
+
 /// Global WiFi stack resources
 static WIFI_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 
-/// Global WiFi initialization instance
-static WIFI_INIT: StaticCell<esp_wifi::EspWifiController<'static>> = StaticCell::new();
-static WIFI_STACK_CELL: StaticCell<Stack<'static>> = StaticCell::new();
-
-/// Global network stack reference
-pub static NET_STACK: embassy_sync::once_lock::OnceLock<Stack<'static>> =
-    embassy_sync::once_lock::OnceLock::new();
-
-/// Initialize WiFi inline (needed for peripheral lifetime management)
+/// Initialize WiFi and return the network stack.
+///
+/// Requires `esp_rtos::start()` to have been called before this function.
 pub fn init_wifi_inline(
     spawner: Spawner,
-    timg1: esp_hal::peripherals::TIMG1,
-    rng: esp_hal::peripherals::RNG,
-    wifi: esp_hal::peripherals::WIFI,
-) -> &'static Stack<'static> {
-    // SAFETY: The peripherals are created in main and live for 'static lifetime
-    // We use transmute to extend the lifetimes since the Rust compiler can't
-    // infer this across function boundaries
-    unsafe {
-        let timg1: esp_hal::peripherals::TIMG1<'static> = core::mem::transmute(timg1);
-        let rng: esp_hal::peripherals::RNG<'static> = core::mem::transmute(rng);
-        let wifi: esp_hal::peripherals::WIFI<'static> = core::mem::transmute(wifi);
+    wifi: esp_hal::peripherals::WIFI<'static>,
+) -> Stack<'static> {
+    // Initialize the radio controller (requires RTOS scheduler to be running)
+    let controller: Controller<'static> = esp_radio::init().unwrap();
+    let controller = RADIO_CONTROLLER.init(controller);
 
-        // Initialize esp-wifi
-        let wifi_init = init(
-            esp_hal::timer::timg::TimerGroup::new(timg1).timer0,
-            Rng::new(rng),
-        )
+    // Create WiFi interface with default hardware config (buffer sizes etc.)
+    let (mut wifi_controller, interfaces) =
+        esp_radio::wifi::new(controller, wifi, esp_radio::wifi::Config::default()).unwrap();
+
+    // Configure station (client) mode with SSID and password
+    wifi_controller
+        .set_config(&ModeConfig::Client(
+            ClientConfig::default()
+                .with_ssid(alloc::string::String::from(WIFI_SSID))
+                .with_password(alloc::string::String::from(WIFI_PASSWORD)),
+        ))
         .unwrap();
-        let wifi_init: esp_wifi::EspWifiController<'static> = core::mem::transmute(wifi_init);
-        let wifi_init = WIFI_INIT.init(wifi_init);
 
-        // Get WiFi controller and interfaces
-        // Returns (WifiController, Interfaces) where Interfaces contains sta and ap WifiDevice fields
-        let (controller, interfaces) = esp_wifi::wifi::new(wifi_init, wifi).unwrap();
-        let controller: esp_wifi::wifi::WifiController<'static> = core::mem::transmute(controller);
+    // Create network stack
+    let stack_config = embassy_net::Config::dhcpv4(Default::default());
+    let stack_resources = WIFI_RESOURCES.init(StackResources::<3>::new());
 
-        // Configure WiFi as client
-        let config = Configuration::Client(ClientConfiguration {
-            ssid: WIFI_SSID.try_into().unwrap(),
-            password: WIFI_PASSWORD.try_into().unwrap(),
-            ..Default::default()
-        });
-        let mut controller = controller;
-        controller.set_configuration(&config).unwrap();
+    let (stack, runner) = embassy_net::new(
+        interfaces.sta,
+        stack_config,
+        stack_resources,
+        1234, // Random seed
+    );
 
-        // Create network stack
-        let stack_config = embassy_net::Config::dhcpv4(Default::default());
-        let stack_resources = WIFI_RESOURCES.init(StackResources::<3>::new());
+    // Spawn network runner and WiFi connection tasks
+    spawner.spawn(net_task(runner)).ok();
+    spawner.spawn(wifi_connection_task(wifi_controller)).ok();
 
-        let (stack, runner) = embassy_net::new(
-            interfaces.sta,
-            stack_config,
-            stack_resources,
-            1234, // Random seed
-        );
-
-        // Spawn network runner task
-        spawner.spawn(net_task(runner)).ok();
-
-        // Spawn WiFi connection management task
-        spawner.spawn(wifi_connection_task(controller)).ok();
-
-        // Initialize stack in static cell
-        let stack = WIFI_STACK_CELL.init(stack);
-
-        // Store globally
-        NET_STACK.init(*stack).ok();
-
-        stack
-    }
+    stack
 }
+
 #[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, esp_wifi::wifi::WifiDevice<'static>>) {
+async fn net_task(mut runner: embassy_net::Runner<'static, WifiDevice<'static>>) {
     runner.run().await
 }
 
-/// Wait for WiFi connection
+/// Wait for WiFi connection to come up
 pub async fn wait_for_connection() {
-    info!("Waiting for DHCP lease...");
-
-    // Wait for the stack to be configured (DHCP)
-    loop {
-        // This is a simplified wait - in practice you'd check the stack status
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-
-        // Check if we have an IP
-        // The stack will automatically connect and get DHCP
-        break;
-    }
-
+    info!("Waiting for WiFi connection...");
+    embassy_time::Timer::after(embassy_time::Duration::from_secs(2)).await;
     info!("WiFi connection established!");
 }
 
-/// Get the IP address of the ESP32
+/// Get the IP address of the device (placeholder)
 pub fn get_ip_address() -> Option<heapless::String<16>> {
-    // This would need to be implemented with the actual stack status
-    // For now, return a placeholder
-    Some(heapless::String::try_from("192.168.1.x").unwrap())
+    None
 }
 
-/// WiFi connection task
+/// WiFi connection task — starts WiFi, then connects and reconnects as needed
 #[embassy_executor::task]
 async fn wifi_connection_task(mut controller: WifiController<'static>) {
     info!("WiFi connection task started");
-    info!("Connecting to SSID: {}", WIFI_SSID);
+
+    controller.start_async().await.unwrap();
 
     loop {
-        match controller.is_started() {
-            Ok(true) => {
-                // WiFi is started, check if connected
-                match controller.is_connected() {
-                    Ok(true) => {
-                        // Connected, wait for disconnect event
-                        embassy_time::Timer::after(embassy_time::Duration::from_secs(1)).await;
-                    }
-                    Ok(false) => {
-                        info!("WiFi disconnected, reconnecting...");
-                        controller.connect().ok();
-                    }
-                    Err(e) => {
-                        error!("WiFi connection error: {:?}", e);
-                    }
-                }
-            }
-            Ok(false) => {
-                // Start WiFi
-                info!("Starting WiFi...");
-                controller.start().ok();
+        info!("Connecting to SSID: {}", WIFI_SSID);
+        match controller.connect_async().await {
+            Ok(()) => {
+                info!("WiFi connected!");
+                // Wait until disconnected before attempting reconnect
+                controller.wait_for_event(WifiEvent::StaDisconnected).await;
+                info!("WiFi disconnected, reconnecting...");
             }
             Err(e) => {
-                error!("WiFi status error: {:?}", e);
+                error!("WiFi connect error: {:?}", e);
+                embassy_time::Timer::after(embassy_time::Duration::from_secs(2)).await;
             }
         }
-
-        embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
     }
 }
+

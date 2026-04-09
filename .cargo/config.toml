@@ -1,5 +1,6 @@
-[build]
-target = "riscv32imc-unknown-none-elf"
+[alias]
+build-esp32 = "build --target riscv32imc-unknown-none-elf --features esp32"
+release-esp32 = "build --release --target riscv32imc-unknown-none-elf --features esp32"
 
 [target.riscv32imc-unknown-none-elf]
 runner = "espflash flash --monitor"

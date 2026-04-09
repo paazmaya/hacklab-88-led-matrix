@@ -2,28 +2,28 @@
 name = "esp32-led-matrix"
 version = "0.1.0"
 authors = ["LED Matrix Controller"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 description = "ESP32-C3 Rust application for controlling 88x88 RGB LED matrix with WiFi HTTP server"
 
 [dependencies]
-log = "0.4"
-heapless = "0.9"
+log = "0.4.29"
+heapless = "0.9.2"
 
 # ESP32 HAL and support crates - optional for library, required for binary
-embassy-executor = { version = "0.7", optional = true }
-embassy-time = { version = "0.5", optional = true }
-embassy-sync = { version = "0.6", optional = true }
-embedded-io-async = { version = "0.7", optional = true }
+embassy-executor = { version = "0.9.1", optional = true }
+embassy-time = { version = "0.5.1", optional = true }
+embassy-sync = { version = "0.8.0", optional = true }
+embedded-io-async = { version = "0.7.0", optional = true }
 embassy-net = { version = "0.8.0", features = ["proto-ipv4", "tcp", "dhcpv4-hostname", "medium-ethernet"], optional = true }
 
-esp-hal = { version = "1.0.0-rc.0", features = ["esp32c3", "unstable"], optional = true }
-esp-hal-embassy = { version = "0.9.1", features = ["esp32c3"], optional = true }
+esp-hal = { version = "1.0.0", features = ["esp32c3", "unstable"], optional = true }
+esp-rtos = { version = "0.2.0", features = ["esp32c3", "embassy", "esp-radio"], optional = true }
 esp-backtrace = { version = "0.18.1", features = ["esp32c3", "panic-handler", "println"], optional = true }
 esp-println = { version = "0.16.1", features = ["esp32c3", "log-04"], optional = true }
 
-esp-wifi = { version = "0.15.1", features = ["esp32c3", "wifi", "smoltcp"], optional = true }
-smoltcp = { version = "0.12", default-features = false, features = [
+esp-radio = { version = "0.17.0", features = ["esp32c3", "wifi", "smoltcp", "unstable"], optional = true }
+smoltcp = { version = "0.13.0", default-features = false, features = [
     "proto-ipv4",
     "proto-dhcpv4",
     "socket-tcp",
@@ -32,11 +32,11 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "log",
 ], optional = true }
 
-critical-section = { version = "1.2", optional = true }
-static_cell = { version = "2.1", optional = true }
+critical-section = { version = "1.2.0", optional = true }
+static_cell = { version = "2.1.1", optional = true }
 
 [features]
-default = ["esp32"]
+default = []
 esp32 = [
     "embassy-executor",
     "embassy-time",
@@ -44,10 +44,10 @@ esp32 = [
     "embedded-io-async",
     "embassy-net",
     "esp-hal",
-    "esp-hal-embassy",
+    "esp-rtos",
     "esp-backtrace",
     "esp-println",
-    "esp-wifi",
+    "esp-radio",
     "smoltcp",
     "critical-section",
     "static_cell",
