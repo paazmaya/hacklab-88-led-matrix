@@ -28,7 +28,7 @@ impl Font {
         let code = ch as u8;
 
         // Only handle printable ASCII (32-126)
-        if code < 32 || code > 126 {
+        if !(32..=126).contains(&code) {
             return None;
         }
 

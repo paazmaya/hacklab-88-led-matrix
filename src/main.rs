@@ -55,9 +55,8 @@ async fn main(spawner: Spawner) {
 
     // Start esp-rtos runtime (RISC-V / ESP32-C3 requires timer + software interrupt)
     let timg0 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
-    let sw_intr = esp_hal::interrupt::software::SoftwareInterruptControl::new(
-        peripherals.SW_INTERRUPT,
-    );
+    let sw_intr =
+        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_intr.software_interrupt0);
 
     // Initialize logging
@@ -73,16 +72,16 @@ async fn main(spawner: Spawner) {
     // normal boot mode is preserved) and GPIO20/GPIO21 are the UART pins
     // (serial logging may be visible as faint noise on DG2/DB2).
     let mut led_matrix = LedMatrix::new(
-        Output::new(peripherals.GPIO0,  Level::Low, OutputConfig::default()), // GCLK  — multiplex clock
-        Output::new(peripherals.GPIO1,  Level::Low, OutputConfig::default()), // DCLK  — data clock
-        Output::new(peripherals.GPIO2,  Level::Low, OutputConfig::default()), // LE    — latch enable
-        Output::new(peripherals.GPIO3,  Level::Low, OutputConfig::default()), // A0    — address bit 0
-        Output::new(peripherals.GPIO4,  Level::Low, OutputConfig::default()), // A1    — address bit 1
-        Output::new(peripherals.GPIO5,  Level::Low, OutputConfig::default()), // A2    — address bit 2
-        Output::new(peripherals.GPIO6,  Level::Low, OutputConfig::default()), // A3    — address bit 3
-        Output::new(peripherals.GPIO7,  Level::Low, OutputConfig::default()), // DR1   — red   data chain 1
-        Output::new(peripherals.GPIO8,  Level::Low, OutputConfig::default()), // DG1   — green data chain 1 (boot)
-        Output::new(peripherals.GPIO9,  Level::Low, OutputConfig::default()), // DB1   — blue  data chain 1 (boot)
+        Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default()), // GCLK  — multiplex clock
+        Output::new(peripherals.GPIO1, Level::Low, OutputConfig::default()), // DCLK  — data clock
+        Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default()), // LE    — latch enable
+        Output::new(peripherals.GPIO3, Level::Low, OutputConfig::default()), // A0    — address bit 0
+        Output::new(peripherals.GPIO4, Level::Low, OutputConfig::default()), // A1    — address bit 1
+        Output::new(peripherals.GPIO5, Level::Low, OutputConfig::default()), // A2    — address bit 2
+        Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default()), // A3    — address bit 3
+        Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default()), // DR1   — red   data chain 1
+        Output::new(peripherals.GPIO8, Level::Low, OutputConfig::default()), // DG1   — green data chain 1 (boot)
+        Output::new(peripherals.GPIO9, Level::Low, OutputConfig::default()), // DB1   — blue  data chain 1 (boot)
         Output::new(peripherals.GPIO10, Level::Low, OutputConfig::default()), // DR2   — red   data chain 2
         Output::new(peripherals.GPIO20, Level::Low, OutputConfig::default()), // DG2   — green data chain 2 (UART RXD)
         Output::new(peripherals.GPIO21, Level::Low, OutputConfig::default()), // DB2   — blue  data chain 2 (UART TXD)
@@ -90,10 +89,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize WiFi and start network task
     info!("Initializing WiFi...");
-    let wifi_stack = wifi::init_wifi_inline(
-        spawner,
-        peripherals.WIFI,
-    );
+    let wifi_stack = wifi::init_wifi_inline(spawner, peripherals.WIFI);
 
     // Wait for WiFi connection (link up + DHCP lease)
     info!("Waiting for WiFi connection...");
@@ -108,7 +104,9 @@ async fn main(spawner: Spawner) {
     }
 
     // Spawn the HTTP server task, handing it a reference to the network stack
-    spawner.spawn(http_server::http_server_task(wifi_stack)).ok();
+    spawner
+        .spawn(http_server::http_server_task(wifi_stack))
+        .ok();
 
     info!("=== System Ready ===");
     info!("Open http://<ESP32_IP>/ in your browser to control the display");

@@ -1,22 +1,53 @@
 //! LED Matrix Driver for 88x88 RGB Display
 //!
 //! This driver implements the control protocol for the LED matrix display
-//! based on the Helsinki Hacklab documentation.
+//! based on the [Helsinki Hacklab documentation][wiki].
+//!
+//! [wiki]: https://wiki.helsinki.hacklab.fi/Ledimatriisin_ohjaaminen
 //!
 //! ## Control Signals
-//! - GCLK: Multiplex clock (~1 MHz, 256 pulses per scanline)
+//! - GCLK: Multiplex clock (~1 MHz, 256 pulses per scanline, plus a 257th
+//!   pulse with longer high/low "dead time" before the next scanline)
 //! - DCLK: Data clock for shift register
-//! - LE: Latch Enable (combined with DCLK for commands)
+//! - LE: Latch Enable (combined with DCLK for commands — see "Commands" below)
 //! - A0-A3: Scanline address (0-10)
 //! - DR1,DG1,DB1: RGB data chain 1
 //! - DR2,DG2,DB2: RGB data chain 2
 //!
 //! ## Display Architecture
 //! - 88x88 pixels, RGB
-//! - 6 parallel shift register chains (R1,G1,B1,R2,G2,B2)
-//! - 11:1 multiplexing (11 scanlines)
+//! - 6 parallel shift register chains (R1,G1,B1,R2,G2,B2) each holding 22
+//!   driver ICs in series
+//! - 11:1 multiplexing (11 scanlines, 8 physical rows per scanline)
 //! - 16-bit PWM per color channel
 //! - Double buffering with VSYNC
+//!
+//! ## Commands (sent via LE + N DCLK pulses)
+//! Raising LE and pulsing DCLK N times issues a command. The number of
+//! pulses is the command code:
+//!
+//! | N  | Command                                |
+//! |----|----------------------------------------|
+//! | 1  | Data Latch (strobe shift register)     |
+//! | 2  | VSYNC (swap display buffers)           |
+//! | 4  | Write Configuration1 register          |
+//! | 10 | Reset                                  |
+//! | 14 | Pre-Active (enable configuration write)|
+//!
+//! When LE is low, DCLK shifts the data lines into the shift register chain.
+//!
+//! ## Data flow (per the wiki's reference implementation)
+//! For each (scanline, led-in-ic) pair:
+//! 1. [`get_chain_data`] translates the linear 88x88 bitmap into the 44
+//!    pixels-per-cycle ordering the chain hardware expects.
+//! 2. [`write_chain`] shifts 22 × 16 = 352 DCLKs, with MSB first, broadcasting
+//!    R1/G1/B1/R2/G2/B2 across all six chains in parallel. On the final
+//!    DCLK of the last IC, LE is raised to issue a Data Latch command, then
+//!    dropped.
+//!
+//! Configuration is sent once at init: Pre-Active → 22 × 16 config bits with
+//! the last 4 DCLKs having LE high (combined shift + WriteConfig command)
+//! → Reset → first frame.
 
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Output;
@@ -36,14 +67,36 @@ const LEDS_PER_IC: usize = 16;
 /// PWM bit depth
 const PWM_BITS: usize = 16;
 
+/// GCLK pulses per scanline (per the wiki: 256 regular pulses + 1 dead-time
+/// pulse = 257 total).
+const GCLK_PULSES_PER_SCANLINE: u32 = 256;
+
+/// Dead time on the 257th GCLK pulse (the wiki says longer delays are
+/// *required* there — MBI5252 datasheet parameters `tdth` and `tdtl` are
+/// minimums in the low-microsecond range, so 5 µs on each phase gives a
+/// 10 µs period, ~10× the normal pulse width).
+const GCLK_DEAD_TIME_US: u32 = 5;
+
 /// Commands sent via LE + DCLK pulses
 #[repr(u8)]
 enum Command {
-    DataLatch = 1,   // Strobe shift register data
-    Vsync = 2,       // Swap display buffers
-    WriteConfig = 4, // Write configuration register
-    Reset = 10,      // Reset display
-    PreActive = 14,  // Enable configuration write
+    /// Strobe shift register data (raised LE during the last DCLK of the
+    /// chain shift — see [`LedMatrix::write_chain`]). Kept as an enum variant
+    /// for documentation; the actual strobe pulse is inlined in `write_chain`
+    /// so the LE high-time matches the last DCLK exactly without an extra
+    /// pulse cycle.
+    #[allow(dead_code)]
+    DataLatch = 1,
+    /// Swap display buffers (front <-> back). Must be issued at the
+    /// scanline 10 -> 0 transition.
+    Vsync = 2,
+    /// Write Configuration1 register. Sent as part of [`LedMatrix::send_config`]
+    /// by holding LE high during the last 4 DCLKs of the config shift.
+    WriteConfig = 4,
+    /// Reset the display.
+    Reset = 10,
+    /// Pre-Active — enables writes to Configuration1.
+    PreActive = 14,
 }
 
 /// LED Matrix Driver
@@ -142,17 +195,22 @@ impl LedMatrix {
         let delay = Delay::new();
         delay.delay_millis(100);
 
-        // Send reset command
+        // Configuration1 register value, per the wiki:
+        //   - scanline count = 11
+        //   - GCLK multiplier enabled
+        //   - 16-bit PWM (not 13-bit)
+        //   - current gain = 5 (room lighting)
+        // The wiki recommends `0x0A45`. The Teensy reference design uses
+        // `0x0A4B` (current gain 11). We use the wiki value.
+        const CONFIG_REGISTER_1: u16 = 0x0A45;
+        self.send_config(CONFIG_REGISTER_1);
+
+        // Reset the display after configuration. The wiki says config must
+        // be re-sent after Reset to take effect, so reset comes *after*
+        // send_config here. (Some reference designs do it the other way
+        // around — the Hacklab panel reportedly tolerates both.)
         self.send_command(Command::Reset);
         delay.delay_millis(10);
-
-        // Send pre-active command
-        self.send_command(Command::PreActive);
-        delay.delay_millis(1);
-
-        // Configure display (enable output, set PWM mode)
-        let config_value: u16 = 0b0000_0000_0001_1111;
-        self.send_config(config_value);
 
         self.initialized = true;
     }
@@ -168,25 +226,65 @@ impl LedMatrix {
         self.le.set_low();
     }
 
-    /// Send configuration value to the display
+    /// Send the Configuration1 register to all driver ICs.
+    ///
+    /// Per the wiki (`Ledimatriisin ohjaaminen > Ohjainpiirin konfigurointi`):
+    ///
+    /// 1. Send the Pre-Active command (N=14, LE high for 14 DCLKs)
+    /// 2. Send the 16-bit Configuration1 value
+    /// 3. Send the WriteConfig command (N=4)
+    ///
+    /// Steps 2 and 3 can be combined by holding LE high during the last 4
+    /// DCLKs of the 16-bit shift. The wiki also notes that the register
+    /// "pitää lähettää jokaiseen ketjuun ja jokaiselle 22 piirille erikseen"
+    /// — must reach each of the 22 ICs in every chain. We satisfy this by
+    /// broadcasting the same 16-bit value 22 times (352 DCLKs total) so the
+    /// value lands in the shift register of every IC, with the WriteConfig
+    /// command issued on the final 4 DCLKs.
     fn send_config(&mut self, config: u16) {
-        // Send WriteConfig command (4 DCLK pulses with LE high — the
-        // `send_command` helper implements that exact sequence, so we
-        // reuse the enum variant rather than open-coding the pulses).
-        self.send_command(Command::WriteConfig);
+        // Step 1: Pre-Active enables writes to Configuration1.
+        self.send_command(Command::PreActive);
 
-        // Shift out the 16-bit config value
-        for bit in (0..16).rev() {
-            if (config >> bit) & 1 == 1 {
+        // Step 2+3: 352 DCLKs, MSB first, with the same bit on all 6 data
+        // lines. The last 4 DCLKs have LE high, which is the WriteConfig
+        // command combined with the trailing bits of the last config word.
+        let total_dclks: usize = PWM_BITS * ICS_PER_CHAIN; // 352
+        let cmd_pulses: usize = Command::WriteConfig as usize; // 4
+        let le_threshold = total_dclks - cmd_pulses;
+
+        for i in 0..total_dclks {
+            // Raise LE for the last `cmd_pulses` DCLKs — this delivers the
+            // WriteConfig command while still clocking the trailing bits.
+            if i >= le_threshold {
+                self.le.set_high();
+            }
+
+            // Bit index cycles 15..0 for each of the 22 config words.
+            let bit_idx = PWM_BITS - 1 - (i % PWM_BITS);
+            let bit_set = (config >> bit_idx) & 1 != 0;
+
+            // Broadcast to all 6 data lines (R1, G1, B1, R2, G2, B2).
+            if bit_set {
                 self.dr1.set_high();
+                self.dg1.set_high();
+                self.db1.set_high();
+                self.dr2.set_high();
+                self.dg2.set_high();
+                self.db2.set_high();
             } else {
                 self.dr1.set_low();
+                self.dg1.set_low();
+                self.db1.set_low();
+                self.dr2.set_low();
+                self.dg2.set_low();
+                self.db2.set_low();
             }
+
             self.pulse_dclk();
         }
 
-        // Latch the config
-        self.send_command(Command::DataLatch);
+        // Drop LE after the WriteConfig command.
+        self.le.set_low();
     }
 
     /// Generate a single DCLK pulse
@@ -285,103 +383,166 @@ impl LedMatrix {
     }
 
     /// Refresh the display - this must be called continuously
+    ///
+    /// Two phases, per the wiki:
+    /// 1. Shift one full frame of image data into the display's back buffer
+    ///    (the display keeps showing the previous frame while we do this).
+    /// 2. Run a complete multiplex cycle: 256 GCLK pulses per scanline,
+    ///    advancing the address every scanline. At the scanline-10 -> 0
+    ///    wrap-around, issue VSYNC so the display swaps to the back buffer
+    ///    we just filled.
     pub fn refresh(&mut self) {
         if !self.initialized {
             return;
         }
 
-        // Send image data for all scanlines
+        // Phase 1: send image data for all scanlines.
         for scanline in 0..SCANLINES {
             self.send_scanline_data(scanline);
         }
 
-        // Perform the multiplexed display cycle
+        // Phase 2: multiplex one frame. The display shows the new image after
+        // the VSYNC at the end of this loop.
+        let delay = Delay::new();
         for scanline in 0..SCANLINES {
             self.set_scanline(scanline);
-            self.pulse_gclk_n(256);
+            self.pulse_gclk_n(GCLK_PULSES_PER_SCANLINE);
 
-            // VSYNC when transitioning from scanline 10 to 0
+            // VSYNC must be issued just before the scanline 10 -> 0 wrap,
+            // so the display swaps buffers exactly at the frame boundary.
             if scanline == SCANLINES - 1 {
                 self.send_command(Command::Vsync);
             }
 
-            // 257th GCLK pulse with dead time
+            // 257th GCLK pulse: longer high/low phase than the regular 256
+            // pulses. The MBI5252 datasheet's `tdth`/`tdtl` are minimums in
+            // the low-microsecond range, so we hold each phase for
+            // `GCLK_DEAD_TIME_US`.
             self.gclk.set_high();
-            // Dead time
+            delay.delay_micros(GCLK_DEAD_TIME_US);
             self.gclk.set_low();
+            delay.delay_micros(GCLK_DEAD_TIME_US);
         }
     }
 
-    /// Send data for one scanline to all chains
+    /// Send the data for one scanline into the back buffer.
+    ///
+    /// Per the wiki's reference pseudocode, the outer loop is `scanline` then
+    /// `led` (which LED output channel of each IC we're programming), and
+    /// for each `(scanline, led)` pair we shift 22 × 16 = 352 DCLKs. The
+    /// complex pixel-to-bit mapping (44 pixels per cycle, 22 per chain) is
+    /// handled by [`get_chain_data`], and the actual GPIO toggling is in
+    /// [`write_chain`].
     fn send_scanline_data(&mut self, scanline: usize) {
-        let row1 = scanline * 8;
-        let row2 = scanline * 8 + 44;
+        let mut data: [[u16; 3]; 44] = [[0u16; 3]; 44];
+        for led in 0..LEDS_PER_IC {
+            self.get_chain_data(scanline, led, &mut data);
+            self.write_chain(&data);
+        }
+    }
+
+    /// Translate the linear 88x88 frame buffer into the 44-pixel ordering
+    /// the chain hardware expects for one `(scanline, led)` cycle.
+    ///
+    /// Direct port of the `getChainData` function from the wiki's reference
+    /// implementation (originally in the Teensy code by Depili). The mapping
+    /// is non-obvious — the wiki's own comment notes that the PCB layout
+    /// inside the panel chose an arbitrary ordering and "syntyneet
+    /// epäloogisuudet on jätetty softamiesten päänsäryksi" (the resulting
+    /// illogicalities have been left for the software people to deal with).
+    ///
+    /// Per call: fills `data[0..21]` with the 22 chain-1 pixels and
+    /// `data[22..43]` with the 22 chain-2 pixels for this `(scanline, led)`.
+    /// The chain data layout is:
+    ///
+    /// - `data[0..10]` and `data[11..21]` are chain 1's two row groups
+    /// - `data[22..32]` and `data[33..43]` are chain 2's two row groups
+    fn get_chain_data(&self, scanline: usize, led: usize, data: &mut [[u16; 3]; 44]) {
+        // led 0..7 picks one row-group of the scanline; led 8..15 picks the
+        // other. ledColumn is the per-group column offset, reversed for the
+        // first group to match the physical wiring.
+        let led_row: usize = if led < 8 { 11 } else { 0 };
+        let mut led_column: usize = led % 8;
+        let mut row: usize = scanline + led_row;
+        if led_row == 11 {
+            led_column = 7 - led_column;
+        }
+
+        // Four row blocks, each contributing 11 columns of one row. The
+        // start index descends (33, 22, 11, 0) because the loop writes the
+        // highest row block first.
+        const STARTS: [usize; 4] = [33, 22, 11, 0];
+        for &start in &STARTS {
+            for i in 0..11usize {
+                let col = 8 * i + led_column;
+                data[start + i] = self.frame_buffer[row][col];
+            }
+            row += 22;
+        }
+    }
+
+    /// Shift 22 × 16 = 352 DCLKs for one `(scanline, led)` cycle.
+    ///
+    /// Bits shift MSB-first. On the very last DCLK of the very last IC, LE
+    /// is raised to issue the Data Latch command (N=1: 1 DCLK with LE
+    /// high). LE is dropped immediately after the loops finish.
+    fn write_chain(&mut self, data: &[[u16; 3]; 44]) {
+        // Make sure LE is low before we start clocking data in — the latch
+        // at the end of the *previous* cycle, if any, would have left it
+        // high.
+        self.le.set_low();
 
         for ic in 0..ICS_PER_CHAIN {
-            for bit in (0..PWM_BITS).rev() {
-                let pixel_base = ic * LEDS_PER_IC;
+            let p1 = &data[ic]; // chain 1 pixel for this IC slot
+            let p2 = &data[ic + ICS_PER_CHAIN]; // chain 2 pixel for this IC slot
 
-                for led in 0..LEDS_PER_IC {
-                    let col = pixel_base + led;
-                    if col >= MATRIX_WIDTH {
-                        continue;
-                    }
-
-                    // Chain 1 data
-                    let r1 = self.frame_buffer[row1][col][0] & (1 << bit) != 0;
-                    let g1 = self.frame_buffer[row1][col][1] & (1 << bit) != 0;
-                    let b1 = self.frame_buffer[row1][col][2] & (1 << bit) != 0;
-
-                    // Chain 2 data
-                    let r2 =
-                        row2 < MATRIX_HEIGHT && self.frame_buffer[row2][col][0] & (1 << bit) != 0;
-                    let g2 =
-                        row2 < MATRIX_HEIGHT && self.frame_buffer[row2][col][1] & (1 << bit) != 0;
-                    let b2 =
-                        row2 < MATRIX_HEIGHT && self.frame_buffer[row2][col][2] & (1 << bit) != 0;
-
-                    // Set data lines
-                    if r1 {
-                        self.dr1.set_high();
-                    } else {
-                        self.dr1.set_low();
-                    }
-                    if g1 {
-                        self.dg1.set_high();
-                    } else {
-                        self.dg1.set_low();
-                    }
-                    if b1 {
-                        self.db1.set_high();
-                    } else {
-                        self.db1.set_low();
-                    }
-                    if r2 {
-                        self.dr2.set_high();
-                    } else {
-                        self.dr2.set_low();
-                    }
-                    if g2 {
-                        self.dg2.set_high();
-                    } else {
-                        self.dg2.set_low();
-                    }
-                    if b2 {
-                        self.db2.set_high();
-                    } else {
-                        self.db2.set_low();
-                    }
-
-                    // On the last bit of the last IC, set LE for latch
-                    if ic == ICS_PER_CHAIN - 1 && led == LEDS_PER_IC - 1 && bit == 0 {
-                        self.le.set_high();
-                    }
-
-                    self.pulse_dclk();
-                    self.le.set_low();
+            for bit_idx in (0..PWM_BITS).rev() {
+                // Last bit of the last IC: raise LE so this DCLK becomes the
+                // Data Latch strobe (N=1).
+                if ic == ICS_PER_CHAIN - 1 && bit_idx == 0 {
+                    self.le.set_high();
                 }
+
+                // Chain 1: R = p1[0], G = p1[1], B = p1[2]
+                if (p1[0] >> bit_idx) & 1 != 0 {
+                    self.dr1.set_high();
+                } else {
+                    self.dr1.set_low();
+                }
+                if (p1[1] >> bit_idx) & 1 != 0 {
+                    self.dg1.set_high();
+                } else {
+                    self.dg1.set_low();
+                }
+                if (p1[2] >> bit_idx) & 1 != 0 {
+                    self.db1.set_high();
+                } else {
+                    self.db1.set_low();
+                }
+
+                // Chain 2: R = p2[0], G = p2[1], B = p2[2]
+                if (p2[0] >> bit_idx) & 1 != 0 {
+                    self.dr2.set_high();
+                } else {
+                    self.dr2.set_low();
+                }
+                if (p2[1] >> bit_idx) & 1 != 0 {
+                    self.dg2.set_high();
+                } else {
+                    self.dg2.set_low();
+                }
+                if (p2[2] >> bit_idx) & 1 != 0 {
+                    self.db2.set_high();
+                } else {
+                    self.db2.set_low();
+                }
+
+                self.pulse_dclk();
             }
         }
+
+        // Drop LE after the Data Latch strobe.
+        self.le.set_low();
     }
 
     /// Set all output pins to low

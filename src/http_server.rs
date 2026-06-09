@@ -4,7 +4,7 @@
 //! for controlling the LED matrix display.
 
 use crate::DISPLAY_TEXT;
-use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_net::{Stack, tcp::TcpSocket};
 use log::{debug, info};
 
 /// HTML content for the web interface
