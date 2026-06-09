@@ -188,10 +188,14 @@ The LED matrix requires 13 control signals:
    const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
    ```
 
-3. **Build the project**:
+3. **Build the project** (the embedded build uses the `esp` toolchain via `cargo +esp` and the `build-esp32`/`release-esp32` aliases defined in `.cargo/config.toml`, which set `--target riscv32imc-unknown-none-elf --features esp32`):
+
    ```bash
-   cargo build --release
+   cargo +esp build-esp32          # debug build
+   cargo +esp release-esp32        # optimised release build
    ```
+
+   The resulting ELF is at `target/riscv32imc-unknown-none-elf/{release,debug}/esp32-led-matrix`.
 
 ### Flashing
 
@@ -199,10 +203,10 @@ The LED matrix requires 13 control signals:
 
 2. **Flash the firmware**:
 
-   **Automatic port detection:**
+   **Automatic port detection (uses the runner from `.cargo/config.toml`):**
 
    ```bash
-   cargo run --release
+   cargo +esp run --release
    ```
 
    **Or specify port manually:**
@@ -210,13 +214,13 @@ The LED matrix requires 13 control signals:
    **Linux/macOS:**
 
    ```bash
-   espflash flash --release --monitor /dev/ttyUSB0
+   cargo +esp espflash flash --release --monitor /dev/ttyUSB0
    ```
 
    **Windows:**
 
    ```powershell
-   espflash flash --release --monitor COM3
+   cargo +esp espflash flash --release --monitor COM3
    ```
 
    (Replace `COM3` with your actual COM port)
@@ -315,11 +319,19 @@ This project is optimized for **ESP32-C3 SuperMini**. For other boards:
    rustup target add riscv32imc-unknown-none-elf
    ```
 
-2. **Compilation errors with esp-hal**
-   - Ensure you're using stable Rust: `rustup default stable`
-   - Try cleaning and rebuilding: `cargo clean && cargo build --release`
+2. **`portable_atomic_unsafe_assume_single_core` compile error**
 
-3. **"unstable feature required" error**
+   The `unsafe-assume-single-core` feature on `portable-atomic` is only legal on the embedded target — it must not be enabled when building for the host. Use the project's `build-esp32` / `release-esp32` aliases (or pass `--target riscv32imc-unknown-none-elf` explicitly) instead of bare `cargo build`:
+
+   ```bash
+   cargo +esp build-esp32
+   ```
+
+3. **Compilation errors with esp-hal**
+   - Make sure you are using the `esp` toolchain: `cargo +esp …`
+   - Try cleaning and rebuilding: `cargo clean && cargo +esp build-esp32`
+
+4. **"unstable feature required" error**
    - Make sure `Cargo.toml` includes `unstable` feature for esp-hal
 
 ### Display Shows Nothing
@@ -414,15 +426,11 @@ cargo test --no-default-features --target x86_64-pc-windows-msvc
 To build the embedded binary for ESP32:
 
 ```bash
-cargo build --release --target riscv32imc-unknown-none-elf
+cargo +esp build-esp32        # debug
+cargo +esp release-esp32      # release
 ```
 
-Or simply:
-```bash
-cargo build --release
-```
-
-(The default target is configured in `.cargo/config.toml`)
+These run `cargo build --target riscv32imc-unknown-none-elf --features esp32` (with `--release` for the second). The `.cargo/config.toml` also wires the runner so `cargo +esp run` builds and flashes.
 
 ### Why `--no-default-features`?
 
@@ -433,14 +441,17 @@ The project has embedded-specific dependencies (esp-hal, esp-wifi, etc.) that fo
 Tests should be run before updating dependencies. Use these commands:
 
 ```bash
-# Run all tests
+# Run all host tests (font module)
 cargo test --no-default-features --target x86_64-pc-windows-msvc
+# or on macOS:
+cargo test --no-default-features --target aarch64-apple-darwin
 
 # Build for embedded
-cargo build --release --target riscv32imc-unknown-none-elf
+cargo +esp build-esp32
+cargo +esp release-esp32
 ```
 
-All tests must pass before deploying to ESP32.
+All tests must pass and the embedded build must succeed before deploying to ESP32.
 
 ## License
 

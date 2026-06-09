@@ -74,22 +74,27 @@ pub struct LedMatrix {
 }
 
 impl LedMatrix {
-    /// Create a new LED matrix driver with the specified GPIO pins
+    /// Create a new LED matrix driver with the specified GPIO pins.
     ///
-    /// # Pin Assignment (ESP32-S2 Compatible)
-    /// - GPIO4:  GCLK - Multiplex clock (~1MHz)
-    /// - GPIO5:  DCLK - Data clock
-    /// - GPIO6:  LE   - Latch Enable
-    /// - GPIO7:  A0   - Address bit 0
-    /// - GPIO8:  A1   - Address bit 1
-    /// - GPIO9:  A2   - Address bit 2
-    /// - GPIO10: A3   - Address bit 3
-    /// - GPIO11: DR1  - Red data chain 1
-    /// - GPIO12: DG1  - Green data chain 1
-    /// - GPIO13: DB1  - Blue data chain 1
-    /// - GPIO14: DR2  - Red data chain 2
-    /// - GPIO15: DG2  - Green data chain 2
-    /// - GPIO16: DB2  - Blue data chain 2
+    /// # Pin Order (ESP32-C3 SuperMini)
+    /// The constructor takes 13 [`Output`] pins in this fixed order, which
+    /// matches the wiring diagram in `README.md`:
+    ///
+    /// | # | Argument | LED-matrix signal | ESP32-C3 GPIO | Notes              |
+    /// |---|----------|-------------------|---------------|--------------------|
+    /// | 1 | `gclk`   | GCLK              | GPIO0         | multiplex clock    |
+    /// | 2 | `dclk`   | DCLK              | GPIO1         | data clock         |
+    /// | 3 | `le`     | LE                | GPIO2         | latch enable       |
+    /// | 4 | `a0`     | A0                | GPIO3         | address bit 0      |
+    /// | 5 | `a1`     | A1                | GPIO4         | address bit 1      |
+    /// | 6 | `a2`     | A2                | GPIO5         | address bit 2      |
+    /// | 7 | `a3`     | A3                | GPIO6         | address bit 3      |
+    /// | 8 | `dr1`    | DR1               | GPIO7         | red   data chain 1 |
+    /// | 9 | `dg1`    | DG1               | GPIO8         | green data chain 1 (boot) |
+    /// |10 | `db1`    | DB1               | GPIO9         | blue  data chain 1 (boot) |
+    /// |11 | `dr2`    | DR2               | GPIO10        | red   data chain 2 |
+    /// |12 | `dg2`    | DG2               | GPIO20        | green data chain 2 (UART RXD) |
+    /// |13 | `db2`    | DB2               | GPIO21        | blue  data chain 2 (UART TXD) |
     pub fn new(
         gclk: Output<'static>,
         dclk: Output<'static>,
@@ -165,12 +170,10 @@ impl LedMatrix {
 
     /// Send configuration value to the display
     fn send_config(&mut self, config: u16) {
-        // Send WriteConfig command
-        self.le.set_high();
-        for _ in 0..4 {
-            self.pulse_dclk();
-        }
-        self.le.set_low();
+        // Send WriteConfig command (4 DCLK pulses with LE high — the
+        // `send_command` helper implements that exact sequence, so we
+        // reuse the enum variant rather than open-coding the pulses).
+        self.send_command(Command::WriteConfig);
 
         // Shift out the 16-bit config value
         for bit in (0..16).rev() {

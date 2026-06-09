@@ -5,7 +5,6 @@
 
 use crate::DISPLAY_TEXT;
 use embassy_net::{tcp::TcpSocket, Stack};
-use embassy_time::{Duration, Timer};
 use log::{debug, info};
 
 /// HTML content for the web interface
@@ -97,26 +96,14 @@ const HTML_PAGE: &str = r#"<!DOCTYPE html>
 const HTTP_OK: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
 const HTTP_NOT_FOUND: &[u8] =
     b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nNot Found";
-
-/// Start the HTTP server task
+///
+/// Takes a reference to the embassy-net stack (which must outlive this task)
+/// and runs the request loop forever. The task is `'static` because the
+/// stack reference is `'static`.
 #[embassy_executor::task]
-pub async fn http_server_task() {
-    info!("HTTP server task starting...");
-
-    // Create a TCP socket buffer
-    let _rx_buffer = [0u8; 4096];
-    let _tx_buffer = [0u8; 4096];
-
-    loop {
-        // Create a new TCP socket
-        // Note: We need the stack reference from the wifi module
-        // For now, this is a simplified version
-
-        info!("HTTP server waiting for connection...");
-
-        // Wait and retry
-        Timer::after(Duration::from_secs(1)).await;
-    }
+pub async fn http_server_task(stack: &'static Stack<'static>) {
+    info!("HTTP server task starting on port 80");
+    run_http_server(stack).await;
 }
 
 /// Handle an HTTP request
@@ -215,10 +202,10 @@ pub async fn run_http_server(stack: &'static Stack<'static>) {
             info!("Display text updated");
         }
 
-        // Send response
-        let mut response_data = [0u8; 8192];
-        let header = b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nConnection: close\r\n\r\n";
+        // Send response (re-use the HTTP_OK header constant).
+        let header = HTTP_OK;
         let header_len = header.len();
+        let mut response_data = [0u8; 8192];
         response_data[..header_len].copy_from_slice(header);
         response_data[header_len..header_len + response.len()].copy_from_slice(response);
 
