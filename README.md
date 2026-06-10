@@ -121,27 +121,91 @@ The LED matrix requires 13 control signals:
 
 ### GPIO Pin Assignment (ESP32-C3 SuperMini)
 
-| ESP32-C3 GPIO | LED Matrix Signal | Notes                       |
-| ------------- | ----------------- | --------------------------- |
-| GPIO0         | GCLK              | Multiplex clock output      |
-| GPIO1         | DCLK              | Data clock output           |
-| GPIO2         | LE                | Latch Enable output         |
-| GPIO3         | A0                | Address bit 0               |
-| GPIO4         | A1                | Address bit 1               |
-| GPIO5         | A2                | Address bit 2               |
-| GPIO6         | A3                | Address bit 3               |
-| GPIO7         | DR1               | Red data chain 1            |
-| GPIO8         | DG1               | Green data chain 1 (Boot)   |
-| GPIO9         | DB1               | Blue data chain 1 (Boot)    |
-| GPIO10        | DR2               | Red data chain 2            |
-| GPIO20        | DG2               | Green data chain 2 (RXD)    |
-| GPIO21        | DB2               | Blue data chain 2 (TXD)     |
-| GND           | GND               | Common ground               |
-| 5V (ext)      | +5V               | **External 5V supply only** |
+| ESP32-C3 GPIO | LED Matrix Signal | Matrix Connector Pin | Notes                        |
+| ------------- | ----------------- | -------------------- | ---------------------------- |
+| GPIO0         | GCLK              | 13                   | Multiplex clock output       |
+| GPIO1         | DCLK              | 14                   | Data clock output            |
+| GPIO2         | LE                | 31                   | Latch Enable output          |
+| GPIO3         | A0                | 9                    | Address bit 0                |
+| GPIO4         | A1                | 10                   | Address bit 1                |
+| GPIO5         | A2                | 11                   | Address bit 2                |
+| GPIO6         | A3                | 12                   | Address bit 3                |
+| GPIO7         | DR1               | 15                   | Red data chain 1             |
+| GPIO8         | DG1               | 32                   | Green data chain 1 (Boot)    |
+| GPIO9         | DB1               | 16                   | Blue data chain 1 (Boot)     |
+| GPIO10        | DR2               | 33                   | Red data chain 2             |
+| GPIO20        | DG2               | 17                   | Green data chain 2 (RXD)     |
+| GPIO21        | DB2               | 34                   | Blue data chain 2 (TXD)      |
+| GND           | GND               | 1, 2, 18, 19         | Common ground (4 pins)       |
+| 5V (ext)      | +5V               | 3–8, 20–25           | External 5V supply (12 pins) |
 
 > **Note:** ESP32-C3 SuperMini exposes GPIO 0-10 and GPIO 20-21 (13 pins). This uses ALL available GPIOs! GPIO8/9 are boot pins but work with matrix pull-ups. GPIO20/21 are UART pins - serial logging may interfere with display.
 
 > ⚠️ **Power Warning**: Do NOT power the LED matrix from USB 5V! The matrix can draw up to 10A. Use an external 5V power supply rated for at least 10A. Connect ESP32-C3 GND to matrix GND.
+
+### 34-Pin Connector Pinout
+
+The matrix uses a 34-pin (2×17) 0.1" pitch pin header. Pin 1 sits at the
+upper-left of the connector when the matrix is viewed from behind with the
+triangles next to the handle pointing up (towards the top of the screen).
+See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
+
+| Pin | Signal | ESP32-C3 GPIO     | Notes                         |
+| --- | ------ | ----------------- | ----------------------------- |
+| 1   | GND    | GND               | Common ground                 |
+| 2   | GND    | GND               |                               |
+| 3   | +5V    | (external supply) | External 5V, ≥10 A            |
+| 4   | +5V    | (external supply) |                               |
+| 5   | +5V    | (external supply) |                               |
+| 6   | +5V    | (external supply) |                               |
+| 7   | +5V    | (external supply) |                               |
+| 8   | +5V    | (external supply) |                               |
+| 9   | A0     | GPIO3             | Address bit 0                 |
+| 10  | A1     | GPIO4             | Address bit 1                 |
+| 11  | A2     | GPIO5             | Address bit 2                 |
+| 12  | A3     | GPIO6             | Address bit 3                 |
+| 13  | GCLK   | GPIO0             | Multiplex clock               |
+| 14  | DCLK   | GPIO1             | Data clock                    |
+| 15  | DR1    | GPIO7             | Red data chain 1              |
+| 16  | DB1    | GPIO9             | Blue data chain 1 (boot pin)  |
+| 17  | DG2    | GPIO20            | Green data chain 2 (UART RXD) |
+| 18  | GND    | GND               | Common ground                 |
+| 19  | GND    | GND               |                               |
+| 20  | +5V    | (external supply) | External 5V, ≥10 A            |
+| 21  | +5V    | (external supply) |                               |
+| 22  | +5V    | (external supply) |                               |
+| 23  | +5V    | (external supply) |                               |
+| 24  | +5V    | (external supply) |                               |
+| 25  | +5V    | (external supply) |                               |
+| 26  | NC     | —                 | Not connected                 |
+| 27  | NC     | —                 |                               |
+| 28  | NC     | —                 |                               |
+| 29  | NC     | —                 |                               |
+| 30  | NC     | —                 |                               |
+| 31  | LE     | GPIO2             | Latch enable                  |
+| 32  | DG1    | GPIO8             | Green data chain 1 (boot pin) |
+| 33  | DR2    | GPIO10            | Red data chain 2              |
+| 34  | DB2    | GPIO21            | Blue data chain 2 (UART TXD)  |
+
+[wiki-connector]: https://wiki.helsinki.hacklab.fi/Ledimatriisin_ohjaaminen
+
+> ⚡ **Why so many +5V and GND pins?** The matrix can pull close to **10 A**
+> at full white. The connector dedicates **12 pins to +5V** and **4 pins to
+> GND** (16 pins total for power), so the per-pin current stays around
+> ~0.8 A — within the safe range of 22 AWG jumper wire. **Wire every single
+> +5V and GND pin to your external supply** — skipping pins to "save time"
+> will cause voltage drop and dim/wrong colors at high brightness.
+
+> 🔧 **Changing the pin map?** If you rewire to a different ESP32 variant
+> (e.g. ESP32-C6, ESP32-S2/S3), you must update **three** places to keep
+> them in sync:
+>
+> 1. The GPIO Pin Assignment table above (ESP32-C3 GPIO → matrix signal)
+> 2. The 34-Pin Connector Pinout table above (matrix signal → connector pin)
+> 3. [`src/main.rs`](src/main.rs) — the `LedMatrix::new(...)` call near the
+>    top of `fn main`. The driver in [`src/led_matrix.rs`](src/led_matrix.rs)
+>    takes the 13 GPIO outputs positionally, so swapping a wire without
+>    swapping the matching constructor argument will scramble the display.
 
 ## Build Instructions
 
@@ -390,6 +454,7 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 This project includes comprehensive unit and integration tests for the testable components (primarily the font module).
 
 ### Unit Tests (Font Module)
+
 To run all unit tests in the library:
 
 ```bash
@@ -397,11 +462,13 @@ cargo test --lib --no-default-features --target x86_64-pc-windows-msvc
 ```
 
 On Linux, replace the target:
+
 ```bash
 cargo test --lib --no-default-features --target x86_64-unknown-linux-gnu
 ```
 
 On macOS:
+
 ```bash
 cargo test --lib --no-default-features --target aarch64-apple-darwin
 # or for Intel Macs:
@@ -409,6 +476,7 @@ cargo test --lib --no-default-features --target x86_64-apple-darwin
 ```
 
 ### Integration Tests
+
 To run integration tests:
 
 ```bash
@@ -416,6 +484,7 @@ cargo test --test integration_tests --no-default-features --target x86_64-pc-win
 ```
 
 ### All Tests Together
+
 To run both unit and integration tests:
 
 ```bash
@@ -423,6 +492,7 @@ cargo test --no-default-features --target x86_64-pc-windows-msvc
 ```
 
 ### Build Binary for ESP32
+
 To build the embedded binary for ESP32:
 
 ```bash
