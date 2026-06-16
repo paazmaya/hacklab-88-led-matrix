@@ -1,7 +1,12 @@
 //! Simple bitmap font for LED matrix text display
 //!
 //! This module provides a 5x7 pixel font suitable for displaying text
-//! on the 88x88 LED matrix. Characters are stored as bit patterns.
+//! on the 88x88 LED matrix. Characters are stored as bit patterns and
+//! resolved via a constant lookup table indexed by ASCII code.
+//!
+//! The lookup table replaces what was a 60+-arm `match` statement and
+//! makes adding or auditing glyphs easier: every printable ASCII code
+//! appears exactly once in the table.
 
 /// Font dimensions
 const FONT_WIDTH: usize = 5;
@@ -10,96 +15,44 @@ const FONT_HEIGHT: usize = 7;
 /// A single character glyph (5x7 bitmap)
 pub type Glyph = [[u8; FONT_WIDTH]; FONT_HEIGHT];
 
-/// Font struct containing character glyphs
+/// First ASCII code we have a glyph for.
+const ASCII_OFFSET: usize = 32;
+
+/// Number of slots in the lookup table (covers ASCII 32..=126 inclusive).
+const ASCII_COUNT: usize = 95;
+
+/// Font struct containing character glyphs.
 pub struct Font {
-    // Glyphs stored as a simple array indexed by ASCII code
-    // Only printable ASCII (32-126) are stored
+    // The actual glyph data lives in [`GLYPH_TABLE`] below — this struct
+    // is a thin wrapper that lets the rest of the code talk to fonts via
+    // methods rather than free functions.
+}
+
+impl Default for Font {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Font {
-    /// Create a new font with built-in ASCII characters
+    /// Create a new font with built-in ASCII characters.
     pub const fn new() -> Self {
         Self {}
     }
 
-    /// Get a glyph for a character, returns None if not found
+    /// Get a glyph for a character, returns `None` if no glyph is defined
+    /// for it. Lowercase letters fall back to their uppercase glyph.
     pub fn get_glyph(&self, ch: char) -> Option<&'static Glyph> {
-        // Convert to ASCII and get glyph
-        let code = ch as u8;
+        let code = ch as u32;
 
-        // Only handle printable ASCII (32-126)
-        if !(32..=126).contains(&code) {
-            return None;
+        // Map lowercase to uppercase, then recurse.
+        if (code as u8).is_ascii_lowercase() {
+            return self.get_glyph((code - 32) as u8 as char);
         }
 
-        // Get the glyph
-        Some(match code {
-            b' ' => &SPACE,
-            b'!' => &EXCLAMATION,
-            b'"' => &QUOTE,
-            b'#' => &HASH,
-            b'$' => &DOLLAR,
-            b'%' => &PERCENT,
-            b'&' => &AMPERSAND,
-            b'\'' => &APOSTROPHE,
-            b'(' => &LPAREN,
-            b')' => &RPAREN,
-            b'*' => &ASTERISK,
-            b'+' => &PLUS,
-            b',' => &COMMA,
-            b'-' => &MINUS,
-            b'.' => &PERIOD,
-            b'/' => &SLASH,
-            b'0' => &DIGIT_0,
-            b'1' => &DIGIT_1,
-            b'2' => &DIGIT_2,
-            b'3' => &DIGIT_3,
-            b'4' => &DIGIT_4,
-            b'5' => &DIGIT_5,
-            b'6' => &DIGIT_6,
-            b'7' => &DIGIT_7,
-            b'8' => &DIGIT_8,
-            b'9' => &DIGIT_9,
-            b':' => &COLON,
-            b';' => &SEMICOLON,
-            b'<' => &LESS,
-            b'=' => &EQUALS,
-            b'>' => &GREATER,
-            b'?' => &QUESTION,
-            b'@' => &AT,
-            b'A' => &UPPER_A,
-            b'B' => &UPPER_B,
-            b'C' => &UPPER_C,
-            b'D' => &UPPER_D,
-            b'E' => &UPPER_E,
-            b'F' => &UPPER_F,
-            b'G' => &UPPER_G,
-            b'H' => &UPPER_H,
-            b'I' => &UPPER_I,
-            b'J' => &UPPER_J,
-            b'K' => &UPPER_K,
-            b'L' => &UPPER_L,
-            b'M' => &UPPER_M,
-            b'N' => &UPPER_N,
-            b'O' => &UPPER_O,
-            b'P' => &UPPER_P,
-            b'Q' => &UPPER_Q,
-            b'R' => &UPPER_R,
-            b'S' => &UPPER_S,
-            b'T' => &UPPER_T,
-            b'U' => &UPPER_U,
-            b'V' => &UPPER_V,
-            b'W' => &UPPER_W,
-            b'X' => &UPPER_X,
-            b'Y' => &UPPER_Y,
-            b'Z' => &UPPER_Z,
-            // Lowercase uses same glyphs as uppercase
-            b'a'..=b'z' => {
-                let upper = code - 32; // Convert to uppercase
-                return self.get_glyph(upper as char);
-            }
-            _ => return None,
-        })
+        let idx = (code as usize).checked_sub(ASCII_OFFSET)?;
+        let slot = GLYPH_TABLE.get(idx)?;
+        *slot
     }
 
     /// Get font width in pixels
@@ -113,7 +66,108 @@ impl Font {
     }
 }
 
-// Define glyphs as constants
+/// Lookup table: index = (ascii_code - ASCII_OFFSET).
+/// Entries are in ascending ASCII order so the mapping is auditable.
+const GLYPH_TABLE: [Option<&'static Glyph>; ASCII_COUNT] = [
+    Some(&SPACE),       //  32 (0x20) ' '
+    Some(&EXCLAMATION), //  33 (0x21) '!'
+    Some(&QUOTE),       //  34 (0x22) '"'
+    Some(&HASH),        //  35 (0x23) '#'
+    Some(&DOLLAR),      //  36 (0x24) '$'
+    Some(&PERCENT),     //  37 (0x25) '%'
+    Some(&AMPERSAND),   //  38 (0x26) '&'
+    Some(&APOSTROPHE),  //  39 (0x27) "'"
+    Some(&LPAREN),      //  40 (0x28) '('
+    Some(&RPAREN),      //  41 (0x29) ')'
+    Some(&ASTERISK),    //  42 (0x2a) '*'
+    Some(&PLUS),        //  43 (0x2b) '+'
+    Some(&COMMA),       //  44 (0x2c) ','
+    Some(&MINUS),       //  45 (0x2d) '-'
+    Some(&PERIOD),      //  46 (0x2e) '.'
+    Some(&SLASH),       //  47 (0x2f) '/'
+    Some(&DIGIT_0),     //  48 (0x30) '0'
+    Some(&DIGIT_1),     //  49 (0x31) '1'
+    Some(&DIGIT_2),     //  50 (0x32) '2'
+    Some(&DIGIT_3),     //  51 (0x33) '3'
+    Some(&DIGIT_4),     //  52 (0x34) '4'
+    Some(&DIGIT_5),     //  53 (0x35) '5'
+    Some(&DIGIT_6),     //  54 (0x36) '6'
+    Some(&DIGIT_7),     //  55 (0x37) '7'
+    Some(&DIGIT_8),     //  56 (0x38) '8'
+    Some(&DIGIT_9),     //  57 (0x39) '9'
+    Some(&COLON),       //  58 (0x3a) ':'
+    Some(&SEMICOLON),   //  59 (0x3b) ';'
+    Some(&LESS),        //  60 (0x3c) '<'
+    Some(&EQUALS),      //  61 (0x3d) '='
+    Some(&GREATER),     //  62 (0x3e) '>'
+    Some(&QUESTION),    //  63 (0x3f) '?'
+    Some(&AT),          //  64 (0x40) '@'
+    Some(&UPPER_A),     //  65 (0x41) 'A'
+    Some(&UPPER_B),     //  66 (0x42) 'B'
+    Some(&UPPER_C),     //  67 (0x43) 'C'
+    Some(&UPPER_D),     //  68 (0x44) 'D'
+    Some(&UPPER_E),     //  69 (0x45) 'E'
+    Some(&UPPER_F),     //  70 (0x46) 'F'
+    Some(&UPPER_G),     //  71 (0x47) 'G'
+    Some(&UPPER_H),     //  72 (0x48) 'H'
+    Some(&UPPER_I),     //  73 (0x49) 'I'
+    Some(&UPPER_J),     //  74 (0x4a) 'J'
+    Some(&UPPER_K),     //  75 (0x4b) 'K'
+    Some(&UPPER_L),     //  76 (0x4c) 'L'
+    Some(&UPPER_M),     //  77 (0x4d) 'M'
+    Some(&UPPER_N),     //  78 (0x4e) 'N'
+    Some(&UPPER_O),     //  79 (0x4f) 'O'
+    Some(&UPPER_P),     //  80 (0x50) 'P'
+    Some(&UPPER_Q),     //  81 (0x51) 'Q'
+    Some(&UPPER_R),     //  82 (0x52) 'R'
+    Some(&UPPER_S),     //  83 (0x53) 'S'
+    Some(&UPPER_T),     //  84 (0x54) 'T'
+    Some(&UPPER_U),     //  85 (0x55) 'U'
+    Some(&UPPER_V),     //  86 (0x56) 'V'
+    Some(&UPPER_W),     //  87 (0x57) 'W'
+    Some(&UPPER_X),     //  88 (0x58) 'X'
+    Some(&UPPER_Y),     //  89 (0x59) 'Y'
+    Some(&UPPER_Z),     //  90 (0x5a) 'Z'
+    None,               //  91 (0x5b) '[' (no glyph)
+    None,               //  92 (0x5c) '\\' (no glyph)
+    None,               //  93 (0x5d) ']' (no glyph)
+    None,               //  94 (0x5e) '^' (no glyph)
+    None,               //  95 (0x5f) '_' (no glyph)
+    None,               //  96 (0x60) '`' (no glyph)
+    None,               //  97 (0x61) 'a' (no glyph)
+    None,               //  98 (0x62) 'b' (no glyph)
+    None,               //  99 (0x63) 'c' (no glyph)
+    None,               // 100 (0x64) 'd' (no glyph)
+    None,               // 101 (0x65) 'e' (no glyph)
+    None,               // 102 (0x66) 'f' (no glyph)
+    None,               // 103 (0x67) 'g' (no glyph)
+    None,               // 104 (0x68) 'h' (no glyph)
+    None,               // 105 (0x69) 'i' (no glyph)
+    None,               // 106 (0x6a) 'j' (no glyph)
+    None,               // 107 (0x6b) 'k' (no glyph)
+    None,               // 108 (0x6c) 'l' (no glyph)
+    None,               // 109 (0x6d) 'm' (no glyph)
+    None,               // 110 (0x6e) 'n' (no glyph)
+    None,               // 111 (0x6f) 'o' (no glyph)
+    None,               // 112 (0x70) 'p' (no glyph)
+    None,               // 113 (0x71) 'q' (no glyph)
+    None,               // 114 (0x72) 'r' (no glyph)
+    None,               // 115 (0x73) 's' (no glyph)
+    None,               // 116 (0x74) 't' (no glyph)
+    None,               // 117 (0x75) 'u' (no glyph)
+    None,               // 118 (0x76) 'v' (no glyph)
+    None,               // 119 (0x77) 'w' (no glyph)
+    None,               // 120 (0x78) 'x' (no glyph)
+    None,               // 121 (0x79) 'y' (no glyph)
+    None,               // 122 (0x7a) 'z' (no glyph)
+    None,               // 123 (0x7b) '{' (no glyph)
+    None,               // 124 (0x7c) '|' (no glyph)
+    None,               // 125 (0x7d) '}' (no glyph)
+    None,               // 126 (0x7e) '~' (no glyph)
+];
+
+// --- Glyph definitions -------------------------------------------------------
+
 const SPACE: Glyph = [
     [0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0],
@@ -274,7 +328,6 @@ const SLASH: Glyph = [
     [1, 0, 0, 0, 0],
 ];
 
-// Digits
 const DIGIT_0: Glyph = [
     [0, 1, 1, 1, 0],
     [1, 0, 0, 0, 1],
@@ -445,7 +498,6 @@ const AT: Glyph = [
     [0, 1, 1, 1, 0],
 ];
 
-// Uppercase letters
 const UPPER_A: Glyph = [
     [0, 1, 1, 1, 0],
     [1, 0, 0, 0, 1],
@@ -705,14 +757,6 @@ const UPPER_Z: Glyph = [
     [1, 0, 0, 0, 0],
     [1, 1, 1, 1, 1],
 ];
-
-// Default trait implementation
-#[cfg_attr(not(test), allow(dead_code))]
-impl Default for Font {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[cfg(test)]
 mod tests {

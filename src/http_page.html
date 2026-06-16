@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LED Matrix Controller</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 { color: #fff; text-align: center; margin-bottom: 10px; }
+        .subtitle { color: rgba(255, 255, 255, 0.7); text-align: center; margin-bottom: 30px; }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; color: #fff; margin-bottom: 8px; }
+        input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 1.2em;
+        }
+        input[type="text"]:focus { outline: none; border-color: #e94560; }
+        input[type="text"]::placeholder { color: rgba(255, 255, 255, 0.5); }
+        button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1.1em;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        button:hover { transform: translateY(-2px); }
+        .info {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            border-left: 4px solid #e94560;
+        }
+        .info h3 { color: #fff; margin-bottom: 10px; }
+        .info p { color: rgba(255, 255, 255, 0.7); font-size: 0.9em; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LED Matrix</h1>
+        <p class="subtitle">88x88 RGB Display Controller</p>
+        <form action="/text" method="get">
+            <div class="form-group">
+                <label for="msg">Enter text to display:</label>
+                <input type="text" id="msg" name="msg" placeholder="Type your message..." maxlength="14">
+            </div>
+            <button type="submit">Display Text</button>
+        </form>
+        <div class="info">
+            <h3>Information</h3>
+            <p>Controls an 88x88 RGB LED matrix. Max 14 characters. Built with Rust and esp-hal.</p>
+        </div>
+    </div>
+</body>
+</html>

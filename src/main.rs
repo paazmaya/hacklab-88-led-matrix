@@ -27,7 +27,6 @@ use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Level, Output, OutputConfig};
 use log::info;
 
-mod font;
 mod http_server;
 mod led_matrix;
 mod wifi;
