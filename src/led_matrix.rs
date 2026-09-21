@@ -174,8 +174,37 @@ impl LedMatrix {
     }
 
     /// Render `text` to the back buffer (cleared first).
+    #[allow(dead_code)]
     pub fn display_text(&mut self, text: &str) {
         self.buffer.display_text(text);
+    }
+
+    /// Clear the frame buffer to black.
+    pub fn clear(&mut self) {
+        self.buffer.clear();
+    }
+
+    /// Draw `text` at signed `(x, y)` coordinates with custom RGB color.
+    pub fn draw_text_at(&mut self, text: &str, x: i32, y: i32, r: u16, g: u16, b: u16) {
+        self.buffer.draw_text_at(text, x, y, r, g, b);
+    }
+
+    /// Draw a single character at signed `(x, y)` coordinates with custom RGB color.
+    #[allow(dead_code)]
+    pub fn draw_char(&mut self, ch: char, x: i32, y: i32, r: u16, g: u16, b: u16) {
+        self.buffer.draw_char(ch, x, y, r, g, b);
+    }
+
+    /// Reference to the internal frame buffer.
+    #[allow(dead_code)]
+    pub fn buffer(&self) -> &FrameBuffer {
+        &self.buffer
+    }
+
+    /// Mutable reference to the internal frame buffer.
+    #[allow(dead_code)]
+    pub fn buffer_mut(&mut self) -> &mut FrameBuffer {
+        &mut self.buffer
     }
 
     /// Initialize the display with configuration.

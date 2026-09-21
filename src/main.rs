@@ -38,14 +38,15 @@ pub const MATRIX_WIDTH: usize = 88;
 pub const MATRIX_HEIGHT: usize = 88;
 
 /// WiFi credentials - MODIFY THESE FOR YOUR NETWORK
+/// (For Wokwi simulation, use SSID "Wokwi-GUEST" with empty password "")
 const WIFI_SSID: &str = "YOUR_WIFI_SSID";
 const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
 
-/// Global display text buffer
-static DISPLAY_TEXT: embassy_sync::mutex::Mutex<
+/// Global display command buffer
+pub static DISPLAY_COMMAND: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    heapless::String<32>,
-> = embassy_sync::mutex::Mutex::new(heapless::String::new());
+    Option<esp32_led_matrix::http_request::DisplayCommand>,
+> = embassy_sync::mutex::Mutex::new(None);
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
@@ -112,11 +113,29 @@ async fn main(spawner: Spawner) {
 
     // Main display refresh loop
     loop {
-        // Get current display text
-        let text = DISPLAY_TEXT.lock().await.clone();
+        // Check for new display command
+        {
+            let mut lock = DISPLAY_COMMAND.lock().await;
+            if let Some(cmd) = lock.take() {
+                if cmd.clear {
+                    led_matrix.clear();
+                }
+                if !cmd.text.is_empty() {
+                    let start_x = cmd.x.unwrap_or(4);
+                    let start_y = cmd.y.unwrap_or(((MATRIX_HEIGHT - 7) / 2) as i32);
+                    led_matrix.draw_text_at(
+                        &cmd.text,
+                        start_x,
+                        start_y,
+                        cmd.color[0],
+                        cmd.color[1],
+                        cmd.color[2],
+                    );
+                }
+            }
+        }
 
-        // Update display
-        led_matrix.display_text(&text);
+        // Multiplexed LED matrix refresh
         led_matrix.refresh();
 
         // Small delay to prevent watchdog

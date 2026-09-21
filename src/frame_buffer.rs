@@ -64,36 +64,59 @@ impl FrameBuffer {
     /// Render `text` to the buffer, clearing it first.
     ///
     /// Glyphs are drawn left-to-right starting at `x = 4` and centred
-    /// vertically. Characters that don't fit are dropped.
+    /// vertically using full white (`0xFFFF, 0xFFFF, 0xFFFF`).
     pub fn display_text(&mut self, text: &str) {
         self.clear();
         if text.is_empty() {
             return;
         }
 
-        let start_y = (MATRIX_HEIGHT - self.font.height()) / 2;
-        let mut x = 4;
-        let max_x = MATRIX_WIDTH.saturating_sub(self.font.width());
+        let start_y = ((MATRIX_HEIGHT - self.font.height()) / 2) as i32;
+        self.draw_text_at(text, 4, start_y, 0xFFFF, 0xFFFF, 0xFFFF);
+    }
+
+    /// Draw `text` starting at `(start_x, start_y)` with the supplied color.
+    ///
+    /// - Supports `\n` to advance to the next line: advances `y` by glyph height
+    ///   plus 1-pixel line spacing, and resets `x` to `start_x`.
+    /// - Advances `x` by glyph width plus 1-pixel character spacing for each glyph.
+    /// - Coordinates are signed (`i32`), allowing text to be partially or
+    ///   completely clipped outside the 88x88 matrix without underflow or panics.
+    pub fn draw_text_at(&mut self, text: &str, start_x: i32, start_y: i32, r: u16, g: u16, b: u16) {
+        let mut cur_x = start_x;
+        let mut cur_y = start_y;
+        let char_advance = (self.font.width() + 1) as i32;
+        let line_height = (self.font.height() + 1) as i32;
 
         for ch in text.chars() {
-            if x >= max_x {
-                break;
+            if ch == '\n' {
+                cur_x = start_x;
+                cur_y += line_height;
+                continue;
             }
-            self.draw_char(ch, x, start_y, 0xFFFF, 0xFFFF, 0xFFFF);
-            x += self.font.width() + 1;
+            self.draw_char(ch, cur_x, cur_y, r, g, b);
+            cur_x += char_advance;
         }
     }
 
     /// Draw one character glyph at `(x, y)` using the supplied color.
-    pub fn draw_char(&mut self, ch: char, x: usize, y: usize, r: u16, g: u16, b: u16) {
+    ///
+    /// Accepts signed `(x, y)` coordinates and clips gracefully: pixels outside
+    /// `0..MATRIX_WIDTH` and `0..MATRIX_HEIGHT` are dropped.
+    pub fn draw_char(&mut self, ch: char, x: i32, y: i32, r: u16, g: u16, b: u16) {
         let Some(glyph) = self.font.get_glyph(ch) else {
             return;
         };
 
         for (gy, row) in glyph.iter().enumerate() {
+            let py = y + gy as i32;
+            if py < 0 || py >= MATRIX_HEIGHT as i32 {
+                continue;
+            }
             for (gx, &pixel) in row.iter().enumerate() {
-                if pixel != 0 {
-                    self.set_pixel(x + gx, y + gy, r, g, b);
+                let px = x + gx as i32;
+                if pixel != 0 && px >= 0 && px < MATRIX_WIDTH as i32 {
+                    self.pixels[py as usize][px as usize] = [r, g, b];
                 }
             }
         }
@@ -190,5 +213,63 @@ mod tests {
             }
         }
         assert!(any_set, "expected some pixels lit after drawing '!'");
+    }
+
+    #[test]
+    fn draw_char_clips_negative_and_out_of_bounds() {
+        let mut fb = FrameBuffer::new();
+        // Negative coordinates must not panic and must clip cleanly
+        fb.draw_char('A', -2, -3, 0x1111, 0x2222, 0x3333);
+        // Completely off-screen
+        fb.draw_char('A', -20, -20, 0x1111, 0x2222, 0x3333);
+        fb.draw_char('A', 200, 200, 0x1111, 0x2222, 0x3333);
+    }
+
+    #[test]
+    fn draw_text_at_renders_custom_color_and_positions() {
+        let mut fb = FrameBuffer::new();
+        fb.draw_text_at("A", 10, 20, 0xAAAA, 0xBBBB, 0xCCCC);
+
+        // Top-left pixel of glyph 'A' (gx=0, gy=0 is 0 in standard 5x7 font, but let's check lit pixels)
+        let mut lit_count = 0;
+        for y in 20..27 {
+            for x in 10..15 {
+                let px = fb.get_pixel(x, y);
+                if px != [0, 0, 0] {
+                    assert_eq!(px, [0xAAAA, 0xBBBB, 0xCCCC]);
+                    lit_count += 1;
+                }
+            }
+        }
+        assert!(lit_count > 0, "expected 'A' glyph to have lit pixels");
+    }
+
+    #[test]
+    fn draw_text_at_multiline_support() {
+        let mut fb = FrameBuffer::new();
+        fb.draw_text_at("A\nB", 0, 0, 0xFFFF, 0xFFFF, 0xFFFF);
+
+        // Line 1 ('A') starts at y = 0..7
+        let mut line1_lit = false;
+        for y in 0..7 {
+            for x in 0..5 {
+                if fb.get_pixel(x, y) != [0, 0, 0] {
+                    line1_lit = true;
+                }
+            }
+        }
+
+        // Line 2 ('B') starts at y = 8..15
+        let mut line2_lit = false;
+        for y in 8..15 {
+            for x in 0..5 {
+                if fb.get_pixel(x, y) != [0, 0, 0] {
+                    line2_lit = true;
+                }
+            }
+        }
+
+        assert!(line1_lit, "line 1 should be lit");
+        assert!(line2_lit, "line 2 should be lit");
     }
 }

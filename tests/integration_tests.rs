@@ -213,3 +213,35 @@ fn font_handles_lowercase_via_uppercase_fallback() {
     // Lowercase should resolve to the exact same glyph as uppercase.
     assert_eq!(upper_a, lower_a);
 }
+
+#[test]
+fn http_query_with_coordinates_color_and_overlay() {
+    let req = b"GET /text?msg=hi&x=10&y=20&color=00FF80&clear=0 HTTP/1.1\r\nHost: test\r\n\r\n";
+    let resp = dispatch(req);
+    let cmd = resp.command.expect("command should be present");
+    assert_eq!(cmd.text.as_str(), "hi");
+    assert_eq!(cmd.x, Some(10));
+    assert_eq!(cmd.y, Some(20));
+    assert_eq!(cmd.color, [0x0000, 0xFFFF, 0x80 * 257]);
+    assert_eq!(cmd.clear, false);
+
+    // Apply command to frame buffer
+    let mut fb = FrameBuffer::new();
+    // Simulate first text
+    fb.draw_text_at("A", 0, 0, 0xFFFF, 0x0000, 0x0000);
+    // Overlay second text without clear
+    if cmd.clear {
+        fb.clear();
+    }
+    fb.draw_text_at(
+        &cmd.text,
+        cmd.x.unwrap_or(4),
+        cmd.y.unwrap_or(40),
+        cmd.color[0],
+        cmd.color[1],
+        cmd.color[2],
+    );
+
+    // Verify pixel from first text ('A' at 0, 0) is still intact (gx=1, gy=0 is lit)
+    assert_eq!(fb.get_pixel(1, 0), [0xFFFF, 0x0000, 0x0000]);
+}

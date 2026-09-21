@@ -20,14 +20,43 @@ const OK_HTML_RESPONSE: &[u8] =
 pub const NOT_FOUND_RESPONSE: &[u8] =
     b"HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nNot Found";
 
+/// A structured command describing what to render to the LED matrix.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DisplayCommand {
+    /// Text to render.
+    pub text: heapless::String<MAX_MESSAGE_LEN>,
+    /// Optional X start coordinate (if `None`, centers horizontally / starts at margin).
+    pub x: Option<i32>,
+    /// Optional Y start coordinate (if `None`, centers vertically).
+    pub y: Option<i32>,
+    /// 16-bit RGB color channels `[R, G, B]`.
+    pub color: [u16; 3],
+    /// Whether to clear the display buffer before drawing.
+    pub clear: bool,
+}
+
+impl Default for DisplayCommand {
+    fn default() -> Self {
+        Self {
+            text: heapless::String::new(),
+            x: None,
+            y: None,
+            color: [0xFFFF, 0xFFFF, 0xFFFF],
+            clear: true,
+        }
+    }
+}
+
 /// What the HTTP layer should send back and what (if anything) to put on
 /// the display.
 pub struct Response {
     /// Raw bytes to write to the socket. Already includes HTTP headers.
     pub body: &'static [u8],
     /// When `Some(text)`, the HTTP handler updates the display buffer
-    /// with this text. `None` means "no change".
+    /// with this text. `None` means "no change". Retained for backwards compatibility.
     pub display_text: Option<heapless::String<MAX_MESSAGE_LEN>>,
+    /// Full structured display command (position, hex color, clear flag).
+    pub command: Option<DisplayCommand>,
 }
 
 impl Response {
@@ -35,13 +64,15 @@ impl Response {
         Self {
             body,
             display_text: None,
+            command: None,
         }
     }
 
-    fn html_with_text(body: &'static [u8], text: heapless::String<MAX_MESSAGE_LEN>) -> Self {
+    fn html_with_command(body: &'static [u8], command: DisplayCommand) -> Self {
         Self {
             body,
-            display_text: Some(text),
+            display_text: Some(command.text.clone()),
+            command: Some(command),
         }
     }
 
@@ -49,6 +80,7 @@ impl Response {
         Self {
             body: NOT_FOUND_RESPONSE,
             display_text: None,
+            command: None,
         }
     }
 }
@@ -65,12 +97,21 @@ pub fn dispatch(request: &[u8]) -> Response {
         return Response::html(OK_HTML_RESPONSE);
     }
     if is_clear_request(request_str) {
-        return Response::html_with_text(OK_HTML_RESPONSE, heapless::String::new());
+        return Response::html_with_command(
+            OK_HTML_RESPONSE,
+            DisplayCommand {
+                text: heapless::String::new(),
+                x: None,
+                y: None,
+                color: [0xFFFF, 0xFFFF, 0xFFFF],
+                clear: true,
+            },
+        );
     }
     if is_text_update_request(request_str)
-        && let Some(decoded) = extract_query_message(request_str)
+        && let Some(cmd) = extract_display_command(request_str)
     {
-        return Response::html_with_text(OK_HTML_RESPONSE, decoded);
+        return Response::html_with_command(OK_HTML_RESPONSE, cmd);
     }
 
     Response::not_found()
@@ -92,16 +133,104 @@ fn is_clear_request(request: &str) -> bool {
     request.contains("GET /clear")
 }
 
-/// True for `GET /text?msg=...`.
+/// True for `GET /text?` or `GET /text `.
 fn is_text_update_request(request: &str) -> bool {
-    request.contains("GET /text?msg=")
+    request.contains("GET /text?") || request.contains("GET /text ")
+}
+
+/// Parse a 6-digit hex color into 16-bit PWM RGB values `[R, G, B]`.
+///
+/// Accepts `#RRGGBB`, `%23RRGGBB`, `0xRRGGBB`, or `RRGGBB` (case-insensitive).
+/// Each 8-bit channel is scaled to 16-bit PWM ($c \times 257$).
+pub fn parse_hex_color(val: &str) -> Option<[u16; 3]> {
+    let s = val
+        .strip_prefix("%23")
+        .or_else(|| val.strip_prefix('%'))
+        .unwrap_or(val);
+    let s = s.strip_prefix('#').unwrap_or(s);
+    let s = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+
+    if s.len() != 6 {
+        return None;
+    }
+
+    let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+
+    Some([r as u16 * 257, g as u16 * 257, b as u16 * 257])
+}
+
+/// Extract a structured [`DisplayCommand`] from an HTTP request.
+pub fn extract_display_command(request: &str) -> Option<DisplayCommand> {
+    let start = request.find("GET /text")?;
+    let after_path = &request[start + "GET /text".len()..];
+    if !after_path.starts_with('?') {
+        return Some(DisplayCommand::default());
+    }
+    let query = &after_path[1..];
+    let query_end = query.find([' ', '\r', '\n']).unwrap_or(query.len());
+    let query = &query[..query_end];
+
+    let mut text = heapless::String::new();
+    let mut x = None;
+    let mut y = None;
+    let mut color = [0xFFFF, 0xFFFF, 0xFFFF];
+    let mut clear = None;
+
+    for param in query.split('&') {
+        if param.is_empty() {
+            continue;
+        }
+        let mut parts = param.splitn(2, '=');
+        let key = parts.next().unwrap_or("");
+        let val = parts.next().unwrap_or("");
+
+        match key {
+            "msg" => {
+                if let Some(decoded) = url_decode(val) {
+                    text = decoded;
+                }
+            }
+            "x" => {
+                if let Ok(val_i32) = val.parse::<i32>() {
+                    x = Some(val_i32);
+                }
+            }
+            "y" => {
+                if let Ok(val_i32) = val.parse::<i32>() {
+                    y = Some(val_i32);
+                }
+            }
+            "color" => {
+                if let Some(parsed_color) = parse_hex_color(val) {
+                    color = parsed_color;
+                }
+            }
+            "clear" => {
+                clear = Some(val == "1" || val.eq_ignore_ascii_case("true"));
+            }
+            _ => {}
+        }
+    }
+
+    Some(DisplayCommand {
+        text,
+        x,
+        y,
+        color,
+        clear: clear.unwrap_or(true),
+    })
 }
 
 /// Extract the URL-decoded `msg=` query parameter from a request, if any.
-fn extract_query_message(request: &str) -> Option<heapless::String<MAX_MESSAGE_LEN>> {
+pub fn extract_query_message(request: &str) -> Option<heapless::String<MAX_MESSAGE_LEN>> {
     let start = request.find("msg=")?;
     let value = &request[start + 4..];
-    let end = value.find([' ', '\r', '\n']).unwrap_or(value.len());
+    let end = value.find(['&', ' ', '\r', '\n']).unwrap_or(value.len());
     url_decode(&value[..end])
 }
 
@@ -241,5 +370,45 @@ mod tests {
     #[test]
     fn html_page_is_non_empty() {
         assert!(!html_page().is_empty());
+    }
+
+    #[test]
+    fn parse_hex_color_formats() {
+        // Full red
+        assert_eq!(parse_hex_color("#FF0000"), Some([0xFFFF, 0x0000, 0x0000]));
+        // URL-encoded #
+        assert_eq!(parse_hex_color("%2300FF00"), Some([0x0000, 0xFFFF, 0x0000]));
+        // Raw 6-char hex
+        assert_eq!(parse_hex_color("0000FF"), Some([0x0000, 0x0000, 0xFFFF]));
+        // Mixed case and 0x prefix
+        assert_eq!(
+            parse_hex_color("0x12ab34"),
+            Some([0x12 * 257, 0xab * 257, 0x34 * 257])
+        );
+        // Invalid lengths or characters
+        assert_eq!(parse_hex_color("FFF"), None);
+        assert_eq!(parse_hex_color("ZZZZZZ"), None);
+    }
+
+    #[test]
+    fn extract_display_command_parses_all_fields() {
+        let req = "GET /text?msg=test&x=10&y=20&color=FF8000&clear=0 HTTP/1.1";
+        let cmd = extract_display_command(req).unwrap();
+        assert_eq!(cmd.text.as_str(), "test");
+        assert_eq!(cmd.x, Some(10));
+        assert_eq!(cmd.y, Some(20));
+        assert_eq!(cmd.color, [0xFF * 257, 0x80 * 257, 0x00 * 257]);
+        assert_eq!(cmd.clear, false);
+    }
+
+    #[test]
+    fn extract_display_command_defaults_when_omitted() {
+        let req = "GET /text?msg=hello HTTP/1.1";
+        let cmd = extract_display_command(req).unwrap();
+        assert_eq!(cmd.text.as_str(), "hello");
+        assert_eq!(cmd.x, None);
+        assert_eq!(cmd.y, None);
+        assert_eq!(cmd.color, [0xFFFF, 0xFFFF, 0xFFFF]);
+        assert_eq!(cmd.clear, true);
     }
 }

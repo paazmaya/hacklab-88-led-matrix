@@ -303,26 +303,93 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 
 ## API Endpoints
 
-| Endpoint              | Method | Description               |
-| --------------------- | ------ | ------------------------- |
-| `/`                   | GET    | Web interface (HTML page) |
-| `/text?msg=YOUR_TEXT` | GET    | Update display text       |
-| `/clear`              | GET    | Clear the display         |
+| Endpoint | Method | Query Parameters | Description |
+| --- | --- | --- | --- |
+| `/` | GET | — | Interactive web interface with position, color picker, and clear toggles |
+| `/text` | GET | `msg`, `x`, `y`, `color`, `clear` | Render text to the LED matrix |
+| `/clear` | GET | — | Clear the LED matrix to black |
+
+### `/text` Query Parameters
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `msg` | string | `""` | Text to render (up to 32 characters, ASCII 32–126). Supports `\n` for line breaks. |
+| `x` | integer | `4` (or auto-centered) | Starting X column coordinate ($0..87$). Supports negative values for partial clipping. |
+| `y` | integer | `40` (vertically centered) | Starting Y row coordinate ($0..87$). Supports negative values for partial clipping. |
+| `color` | hex string | `#FFFFFF` (white) | 24-bit RGB hex color (e.g. `FF8000`, `#00FF88`, or `%23FF0000`). Scaled to 16-bit PWM channels. |
+| `clear` | boolean (`1`/`0`) | `1` (true) | When `1`, clears the matrix before drawing. When `0`, overlays text onto existing content. |
+
+#### Examples
+
+- **Default centered text**:
+  ```text
+  GET /text?msg=Hello+World
+  ```
+- **Custom coordinate and hex color**:
+  ```text
+  GET /text?msg=TopLeft&x=0&y=0&color=FF5500
+  ```
+- **Multi-line overlay without clearing previous content**:
+  ```text
+  GET /text?msg=Line+1&x=0&y=0&color=FF0000&clear=1
+  GET /text?msg=Line+2&x=0&y=10&color=00FF00&clear=0
+  GET /text?msg=Line+3&x=0&y=20&color=0088FF&clear=0
+  ```
+
+## Wokwi Simulation
+
+This project includes a complete [Wokwi](https://wokwi.com/) simulation configuration mirroring the real hardware setup as closely as possible.
+
+### Simulated Components
+
+- **ESP32-C3 DevKit** (`board-esp32-c3-devkitm-1`): RISC-V microcontroller running the exact embedded firmware with serial monitor connected to TX/RX.
+- **8-Channel Digital Logic Analyzer** (`wokwi-logic-analyzer`): Monitors the 7 control pins (GCLK on D0, DCLK on D1, LE on D2, A0–A3 on D3–D6) and red data chain 1 (DR1 on D7). Signal waveforms are automatically saved to `signals.vcd` upon stopping the simulation (can be opened in VS Code using Surfer or WaveTrace).
+- **Driver Shift Registers** (`wokwi-74hc595`): 6 parallel shift registers representing the driver IC chains (R1, G1, B1, R2, G2, B2), clocked by DCLK and latched by LE.
+- **RGB Activity Indicators** (`wokwi-rgb-led`): Display live output from the shift register chains.
+- **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi chip implementing the 34-pin connector and an $88 \times 88$ RGBA framebuffer.
+
+### Running in VS Code
+
+1. Install the [Wokwi for VS Code](https://marketplace.visualstudio.com/items?itemName=wokwi.wokwi-vscode) extension and activate your license.
+2. Build the firmware:
+   ```bash
+   cargo release-esp32
+   ```
+3. Open the Command Palette (`F1` or `Cmd+Shift+P`) and choose **Wokwi: Start Simulator**.
+4. The virtual WiFi connects via `Wokwi-GUEST`. Port 80 on the simulated ESP32 is forwarded to port 8080 on your host machine.
+5. Open your web browser at `http://localhost:8080/` to interact with the simulated web server!
+
+> 💡 **WiFi in Wokwi**: When running in the simulator, set `const WIFI_SSID: &str = "Wokwi-GUEST";` and `const WIFI_PASSWORD: &str = "";` in `src/main.rs`.
 
 ## Project Structure
 
 ```
 esp32-led-matrix/
-├── Cargo.toml          # Project dependencies (esp-hal, esp-wifi)
-├── rust-toolchain.toml # Rust toolchain configuration
+├── Cargo.toml          # Dependencies, feature flags, and bin/lib targets
+├── rust-toolchain.toml # Stable Rust toolchain configuration
 ├── .cargo/
-│   └── config.toml     # Build target configuration
-└── src/
-    ├── main.rs         # Main application entry point
-    ├── led_matrix.rs   # LED matrix driver
-    ├── http_server.rs  # HTTP server implementation
-    ├── wifi.rs         # WiFi connectivity
-    └── font.rs         # 5x7 bitmap font
+│   └── config.toml     # Build aliases (build-esp32, release-esp32) and runner
+├── wokwi.toml          # Wokwi simulator configuration & port forwarding
+├── diagram.json        # Circuit diagram with ESP32-C3, logic analyzer & shift registers
+├── chips/              # Custom 88x88 LED matrix chip definition for Wokwi
+│   ├── matrix-88x88.chip.json
+│   ├── matrix-88x88.chip.c
+│   ├── wokwi-api.h
+│   └── Makefile
+├── src/
+│   ├── main.rs         # Embedded binary entry point, pin setup & refresh loop
+│   ├── lib.rs          # Testable library root (font, framebuffer, parser, mapper)
+│   ├── frame_buffer.rs # 88x88 RGB pixel buffer, draw_text_at, draw_char & clipping
+│   ├── font.rs         # 5x7 ASCII bitmap font (ASCII 32–126)
+│   ├── chain_mapper.rs # 88x88 matrix to 6 parallel shift register chains mapping
+│   ├── bit_stream.rs   # Bit-level serialization for GPIO pin pulses
+│   ├── http_request.rs # Pure HTTP parsing, query parameters (x, y, color, clear)
+│   ├── http_page.html  # Modern glassmorphism web UI with position & color controls
+│   ├── http_server.rs  # Async HTTP server task (embassy-net)
+│   ├── led_matrix.rs   # Hardware driver & GPIO pulse multiplexer
+│   └── wifi.rs         # WiFi initialization & DHCP stack management
+└── tests/
+    └── integration_tests.rs # End-to-end pipeline & query parsing tests
 ```
 
 ## Dependencies
@@ -414,9 +481,9 @@ This project is optimized for **ESP32-C3 SuperMini**. For other boards:
 
 ### Text Not Displaying Correctly
 
-1. **Check character support** - Only ASCII characters are supported
-2. **Reduce text length** - Maximum ~14 characters fit on screen
-3. **Check font rendering** - Some special characters may not be defined
+1. **Check character support** - Only ASCII characters are supported (ASCII 32–126; lowercase characters automatically map to uppercase glyphs)
+2. **Text length & wrapping** - Up to 32 characters per message. About 14 characters fit on a single horizontal line; use `\n` to break text onto multiple lines or supply explicit `x` and `y` coordinates
+3. **Check font rendering** - Font uses 5×7 pixels per glyph with 1-pixel horizontal and vertical spacing
 
 ## Technical Notes
 
@@ -451,44 +518,19 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 
 ## Running Tests
 
-This project includes comprehensive unit and integration tests for the testable components (primarily the font module).
+This project includes comprehensive unit and integration tests for all pure Rust components (`font`, `frame_buffer`, `chain_mapper`, `bit_stream`, and `http_request`).
 
-### Unit Tests (Font Module)
-
-To run all unit tests in the library:
+Because the embedded ESP32 HAL dependencies are behind the optional `esp32` feature flag (`default = []`), all tests run directly on your host machine:
 
 ```bash
-cargo test --lib --no-default-features --target x86_64-pc-windows-msvc
-```
+# Run all unit and integration tests
+cargo test
 
-On Linux, replace the target:
+# Run unit tests only
+cargo test --lib
 
-```bash
-cargo test --lib --no-default-features --target x86_64-unknown-linux-gnu
-```
-
-On macOS:
-
-```bash
-cargo test --lib --no-default-features --target aarch64-apple-darwin
-# or for Intel Macs:
-cargo test --lib --no-default-features --target x86_64-apple-darwin
-```
-
-### Integration Tests
-
-To run integration tests:
-
-```bash
-cargo test --test integration_tests --no-default-features --target x86_64-pc-windows-msvc
-```
-
-### All Tests Together
-
-To run both unit and integration tests:
-
-```bash
-cargo test --no-default-features --target x86_64-pc-windows-msvc
+# Run integration tests only
+cargo test --test integration_tests
 ```
 
 ### Build Binary for ESP32
@@ -496,15 +538,11 @@ cargo test --no-default-features --target x86_64-pc-windows-msvc
 To build the embedded binary for ESP32:
 
 ```bash
-cargo +esp build-esp32        # debug
-cargo +esp release-esp32      # release
+cargo build-esp32        # debug build
+cargo release-esp32      # optimised release build
 ```
 
-These run `cargo build --target riscv32imc-unknown-none-elf --features esp32` (with `--release` for the second). The `.cargo/config.toml` also wires the runner so `cargo +esp run` builds and flashes.
-
-### Why `--no-default-features`?
-
-The project has embedded-specific dependencies (esp-hal, esp-wifi, etc.) that form the default features. Since these cannot compile for the host architecture (Windows/Linux/macOS), we disable them when running tests. The font module is pure Rust and doesn't depend on these features.
+These aliases defined in `.cargo/config.toml` invoke `cargo build --target riscv32imc-unknown-none-elf --features esp32`. The `.cargo/config.toml` also configures `runner = "espflash flash --monitor"` so `cargo run --release` automatically flashes the connected board.
 
 ## Continuous Integration
 

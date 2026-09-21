@@ -3,7 +3,7 @@
 //! URL-decoding and response shaping lives in the host-testable
 //! `http_request` module.
 
-use crate::DISPLAY_TEXT;
+use crate::DISPLAY_COMMAND;
 use embassy_net::{Stack, tcp::TcpSocket};
 use esp32_led_matrix::http_request;
 use log::{debug, info};
@@ -35,12 +35,12 @@ pub async fn run_http_server(stack: &'static Stack<'static>) {
             None => continue,
         };
 
-        // Take ownership of the optional display text *before* the body
+        // Take ownership of the optional display command *before* the body
         // so the partial move of `Response` doesn't trouble the borrow
         // checker on the subsequent `write_response` call.
         let body = response.body;
-        let text = response.display_text;
-        apply_text_update(text).await;
+        let command = response.command;
+        apply_command_update(command).await;
         write_response(&mut socket, body).await;
         socket.close();
         info!("HTTP request handled");
@@ -60,13 +60,13 @@ async fn read_request(socket: &mut TcpSocket<'_>) -> Option<[u8; 512]> {
     }
 }
 
-/// If the parsed response carries a new display text, update the
-/// shared `DISPLAY_TEXT` global. Logs the change.
-async fn apply_text_update(text: Option<heapless::String<{ http_request::MAX_MESSAGE_LEN }>>) {
-    if let Some(text) = text {
-        let mut display_text = DISPLAY_TEXT.lock().await;
-        *display_text = text;
-        info!("Display text updated");
+/// If the parsed response carries a display command, queue it in the
+/// shared `DISPLAY_COMMAND` global. Logs the change.
+async fn apply_command_update(command: Option<http_request::DisplayCommand>) {
+    if let Some(cmd) = command {
+        let mut display_cmd = DISPLAY_COMMAND.lock().await;
+        *display_cmd = Some(cmd);
+        info!("Display command queued");
     }
 }
 

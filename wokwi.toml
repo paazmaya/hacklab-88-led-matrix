@@ -1,0 +1,15 @@
+[wokwi]
+version = 1
+firmware = "target/riscv32imc-unknown-none-elf/release/esp32-led-matrix"
+elf = "target/riscv32imc-unknown-none-elf/release/esp32-led-matrix"
+gdbServerPort = 3333
+
+# Automatically export logic analyzer captures to VCD when simulation stops
+# Can be opened with Surfer, PulseView, or GTKWave
+vcdFile = "signals.vcd"
+
+# Forward HTTP port 80 on the simulated ESP32 to port 8080 on the host machine
+# Access http://localhost:8080/ in your browser while Wokwi is running
+[[net.forward]]
+from = "localhost:8080"
+to = "target:80"

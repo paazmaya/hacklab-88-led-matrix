@@ -27,39 +27,83 @@
         h1 { color: #fff; text-align: center; margin-bottom: 10px; }
         .subtitle { color: rgba(255, 255, 255, 0.7); text-align: center; margin-bottom: 30px; }
         .form-group { margin-bottom: 20px; }
-        label { display: block; color: #fff; margin-bottom: 8px; }
-        input[type="text"] {
+        .form-row { display: flex; gap: 12px; margin-bottom: 20px; }
+        .form-row .form-group { flex: 1; margin-bottom: 0; }
+        label { display: block; color: #fff; margin-bottom: 8px; font-size: 0.95em; }
+        input[type="text"], input[type="number"] {
             width: 100%;
-            padding: 15px;
+            padding: 12px 15px;
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
             background: rgba(255, 255, 255, 0.1);
             color: #fff;
-            font-size: 1.2em;
+            font-size: 1.1em;
         }
-        input[type="text"]:focus { outline: none; border-color: #e94560; }
-        input[type="text"]::placeholder { color: rgba(255, 255, 255, 0.5); }
-        button {
+        input[type="color"] {
             width: 100%;
-            padding: 15px;
+            height: 48px;
+            padding: 4px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            margin-bottom: 20px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: #e94560;
+            cursor: pointer;
+        }
+        input[type="text"]:focus, input[type="number"]:focus { outline: none; border-color: #e94560; }
+        input[type="text"]::placeholder, input[type="number"]::placeholder { color: rgba(255, 255, 255, 0.5); font-size: 0.9em; }
+        .button-group { display: flex; gap: 10px; }
+        button {
+            flex: 2;
+            padding: 14px;
             background: linear-gradient(135deg, #e94560, #ff6b6b);
             border: none;
             border-radius: 10px;
             color: #fff;
-            font-size: 1.1em;
+            font-size: 1.05em;
             cursor: pointer;
             text-transform: uppercase;
+            font-weight: 600;
         }
         button:hover { transform: translateY(-2px); }
+        .btn-clear {
+            flex: 1;
+            background: #232742;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            text-decoration: none;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 10px;
+            color: #ffffff;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-clear:hover { background: rgba(255, 75, 75, 0.4); }
         .info {
-            margin-top: 30px;
-            padding: 20px;
+            margin-top: 25px;
+            padding: 18px;
             background: rgba(255, 255, 255, 0.05);
             border-radius: 10px;
             border-left: 4px solid #e94560;
         }
-        .info h3 { color: #fff; margin-bottom: 10px; }
-        .info p { color: rgba(255, 255, 255, 0.7); font-size: 0.9em; line-height: 1.6; }
+        .info h3 { color: #fff; margin-bottom: 8px; }
+        .info p { color: rgba(255, 255, 255, 0.7); font-size: 0.88em; line-height: 1.5; }
     </style>
 </head>
 <body>
@@ -68,14 +112,35 @@
         <p class="subtitle">88x88 RGB Display Controller</p>
         <form action="/text" method="get">
             <div class="form-group">
-                <label for="msg">Enter text to display:</label>
-                <input type="text" id="msg" name="msg" placeholder="Type your message..." maxlength="14">
+                <label for="msg">Text to display:</label>
+                <input type="text" id="msg" name="msg" placeholder="Type your message..." maxlength="32">
             </div>
-            <button type="submit">Display Text</button>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="x">X Position:</label>
+                    <input type="number" id="x" name="x" placeholder="Center" min="-88" max="88">
+                </div>
+                <div class="form-group">
+                    <label for="y">Y Position:</label>
+                    <input type="number" id="y" name="y" placeholder="Center" min="-88" max="88">
+                </div>
+                <div class="form-group">
+                    <label for="color">Color:</label>
+                    <input type="color" id="color" name="color" value="#ffffff">
+                </div>
+            </div>
+            <label class="checkbox-group">
+                <input type="checkbox" name="clear" value="1" checked>
+                Clear screen before drawing
+            </label>
+            <div class="button-group">
+                <button type="submit">Display Text</button>
+                <a href="/clear" class="btn-clear">Clear</a>
+            </div>
         </form>
         <div class="info">
             <h3>Information</h3>
-            <p>Controls an 88x88 RGB LED matrix. Max 14 characters. Built with Rust and esp-hal.</p>
+            <p>Controls an 88x88 RGB matrix. Supports arbitrary (X, Y) positions, 24-bit hex colors, overlays, and up to 32 characters per message.</p>
         </div>
     </div>
 </body>
