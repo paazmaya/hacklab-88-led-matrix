@@ -15,6 +15,24 @@ https://docs.espressif.com/projects/rust/book/
 This project implements a complete solution for driving the "bonk" LED matrix displays from Helsinki Hacklab.
 The ESP32-C3 SuperMini connects to the local Wi-Fi network and serves a web page to input text and adjust display brightness for the LED matrix.
 
+```mermaid
+flowchart TD
+    User["👤 User / Web Browser"] -->|"HTTP GET /, /text, /brightness, /clear"| HTTPServer["🌐 Embassy Async HTTP Server (Port 80)"]
+
+    subgraph ESP32["ESP32-C3 SuperMini (RISC-V)"]
+        WiFi["📡 Wi-Fi Station (esp-wifi) DHCP Client"] -->|"Network Stack (embassy-net)"| HTTPServer
+        StatusInd["💡 Status Indicator Task (Wi-Fi / DHCP State)"] -->|"Overlay Pixel (x=87, y=0)"| FrameBuffer
+
+        HTTPServer -->|"Update Text, Position, Color & Brightness"| FrameBuffer["🖼️ FrameBuffer (88×88 RGB) + Brightness State"]
+        
+        FrameBuffer -->|"Pixel RGB & Scaling"| ChainMapper["⚡ Chain Mapper & Bit Stream (6 Parallel Chains: R1,G1,B1, R2,G2,B2)"]
+
+        ChainMapper -->|"GPIO Bit-Banging (13 Control Pins)"| Driver["🎛️ LED Matrix Driver (Scanline Address A0-A3, DCLK, LE, GCLK)"]
+    end
+
+    Driver -->|"Parallel Shift-Register & Clock Signals"| Matrix["🖥️ 88×88 RGB LED Matrix (11:1 Multiplexed Display)"]
+```
+
 ### Key Features
 
 - **88×88 RGB Matrix Control**: Pure Rust driver using GPIO bit-banging across 6 parallel shift-register chains.
