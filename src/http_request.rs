@@ -127,7 +127,7 @@ pub fn dispatch(request: &[u8]) -> Response {
 }
 
 /// Borrow the HTML page body (used by the network layer to append it
-/// after [`OK_HTML_RESPONSE`]).
+/// after `OK_HTML_RESPONSE`).
 pub fn html_page() -> &'static [u8] {
     HTML_PAGE.as_bytes()
 }

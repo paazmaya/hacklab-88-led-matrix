@@ -26,15 +26,24 @@ pub const CONFIG_TOTAL_DCLKS: usize = PWM_BITS * ICS_PER_CHAIN;
 /// `CONFIG_WRITE_PULSES` DCLKs of the config shift).
 pub const CONFIG_WRITE_PULSES: usize = 4;
 
-/// One DCLK cycle worth of pin states.
+/// One DCLK cycle worth of pin states across all parallel shift-register lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChainBit {
+    /// Red data line for chain 1 (rows 0..=43).
     pub r1: bool,
+    /// Green data line for chain 1 (rows 0..=43).
     pub g1: bool,
+    /// Blue data line for chain 1 (rows 0..=43).
     pub b1: bool,
+    /// Red data line for chain 2 (rows 44..=87).
     pub r2: bool,
+    /// Green data line for chain 2 (rows 44..=87).
     pub g2: bool,
+    /// Blue data line for chain 2 (rows 44..=87).
     pub b2: bool,
+    /// Latch Enable (LE) state during this DCLK cycle.
+    ///
+    /// When `true`, signals a command latch (e.g., data latch or config write).
     pub le_high: bool,
 }
 

@@ -33,8 +33,9 @@ mod wifi;
 
 use crate::led_matrix::LedMatrix;
 
-/// LED Matrix dimensions
+/// Horizontal resolution of the LED matrix in pixels.
 pub const MATRIX_WIDTH: usize = 88;
+/// Vertical resolution of the LED matrix in pixels.
 pub const MATRIX_HEIGHT: usize = 88;
 
 /// WiFi credentials - can be configured via environment variables at compile time
@@ -45,12 +46,13 @@ pub const WIFI_SSID: &str = match option_env!("WIFI_SSID") {
     None => "Wokwi-GUEST",
 };
 
+/// WiFi WPA2/WPA3 pre-shared key, optionally supplied at compile time via `WIFI_PASSWORD`.
 pub const WIFI_PASSWORD: &str = match option_env!("WIFI_PASSWORD") {
     Some(val) => val,
     None => "",
 };
 
-/// Global display command buffer
+/// Global display command buffer shared asynchronously between the HTTP server task and the main refresh loop.
 pub static DISPLAY_COMMAND: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     Option<esp32_led_matrix::http_request::DisplayCommand>,

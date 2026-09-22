@@ -16,7 +16,9 @@ pub type Pixel = [u16; 3];
 /// (row-major), matching the natural "row, column" coordinate system used
 /// by the rest of the driver.
 pub struct FrameBuffer {
+    /// 2D pixel array storing RGB triplets `[r, g, b]` for each row and column.
     pixels: [[Pixel; MATRIX_WIDTH]; MATRIX_HEIGHT],
+    /// Embedded 5x7 bitmap font instance used for character rendering.
     font: Font,
 }
 

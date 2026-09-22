@@ -86,35 +86,46 @@ const GCLK_PULSES_PER_SCANLINE: u32 = 256;
 /// 10 µs period, ~10× the normal pulse width).
 const GCLK_DEAD_TIME_US: u32 = 5;
 
-/// Commands sent via LE + DCLK pulses.
+/// Commands sent via LE + DCLK pulses to the MBI5252 driver ICs.
 #[repr(u8)]
 #[derive(Clone, Copy)]
 enum Command {
     /// Swap display buffers (front <-> back). Must be issued at the
     /// scanline 10 -> 0 transition.
     Vsync = 2,
-    /// Reset the display.
+    /// Reset the display driver ICs.
     Reset = 10,
     /// Pre-Active — enables writes to Configuration1.
     PreActive = 14,
 }
 
-/// LED Matrix Driver
+/// Hardware driver orchestrating 13 ESP32-C3 GPIO outputs to drive the 88x88 RGB LED panel.
 pub struct LedMatrix {
-    // GPIO pins — named individually because `Output<'static>` is not
-    // trivially array-able. Helpers below hide the repetition.
+    /// Multiplex clock (GCLK, GPIO0).
     gclk: Output<'static>,
+    /// Shift-register data clock (DCLK, GPIO1).
     dclk: Output<'static>,
+    /// Latch Enable (LE, GPIO2).
     le: Output<'static>,
+    /// Scanline address line 0 (A0, GPIO3).
     a0: Output<'static>,
+    /// Scanline address line 1 (A1, GPIO4).
     a1: Output<'static>,
+    /// Scanline address line 2 (A2, GPIO5).
     a2: Output<'static>,
+    /// Scanline address line 3 (A3, GPIO6).
     a3: Output<'static>,
+    /// Red data line for chain 1 (DR1, GPIO7, rows 0..=43).
     dr1: Output<'static>,
+    /// Green data line for chain 1 (DG1, GPIO8, rows 0..=43).
     dg1: Output<'static>,
+    /// Blue data line for chain 1 (DB1, GPIO9, rows 0..=43).
     db1: Output<'static>,
+    /// Red data line for chain 2 (DR2, GPIO10, rows 44..=87).
     dr2: Output<'static>,
+    /// Green data line for chain 2 (DG2, GPIO20, rows 44..=87).
     dg2: Output<'static>,
+    /// Blue data line for chain 2 (DB2, GPIO21, rows 44..=87).
     db2: Output<'static>,
 
     /// Pixel data + text rendering. Pure logic, no GPIO.
