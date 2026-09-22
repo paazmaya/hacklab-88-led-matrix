@@ -13,6 +13,27 @@ https://docs.espressif.com/projects/rust/book/
 This project implements a complete solution for driving the "bonk" LED matrix displays from Helsinki Hacklab.
 The ESP32-C3 SuperMini connects to your local WiFi network and serves a web page where you can input text to display on the LED matrix.
 
+### WiFi Operation (Station / Client Mode)
+
+The ESP32 operates in **Station (STA) mode** as a **client** on your existing network:
+
+- **Not an Access Point**: The ESP32 does **not** create its own Wi-Fi hotspot or SoftAP.
+- **Network credentials**: `WIFI_SSID` and `WIFI_PASSWORD` in `src/main.rs` must be set to the credentials of your **existing 2.4 GHz home/office Wi-Fi router**.
+- **Accessing the interface**: Once the ESP32 connects, your router assigns it an IP address via DHCP (printed to the serial monitor at boot). Users connect their phone or laptop to the **same Wi-Fi network** and open `http://<ESP32_IP_ADDRESS>/` in a web browser.
+
+### Status Indicator (Top-Right Pixel)
+
+To allow users to diagnose Wi-Fi and system state at a glance without attaching a USB serial monitor, the top-right pixel ($x = 87, y = 0$) acts as an integrated 1-pixel status indicator:
+
+| State                    | Color          | Cadence                                    | Meaning                                           |
+| ------------------------ | -------------- | ------------------------------------------ | ------------------------------------------------- |
+| **Connecting**           | Amber / Yellow | 1 Hz slow blink (500 ms on / 500 ms off)   | Booting / associating with 2.4 GHz Wi-Fi AP       |
+| **Waiting DHCP**         | Cyan / Blue    | 2 Hz fast blink (250 ms on / 250 ms off)   | Associated with AP; acquiring DHCP IPv4 lease     |
+| **Connected / Ready**    | Dim Green      | Double-pulse heartbeat (every 3 s)         | Ready! IP acquired, HTTP server accepting clients |
+| **Error / Disconnected** | Red            | 4 Hz rapid strobe (125 ms on / 125 ms off) | Wi-Fi authentication failed or connection dropped |
+
+The indicator operates at a gentle, non-distracting brightness (~10% of maximum PWM) and uses an embedded double-tap heartbeat once connected so it is never mistaken for a stuck or dead pixel.
+
 ### Why ESP32-C3 SuperMini?
 
 The ESP32-C3 is Espressif's **RISC-V** based chip with several advantages:
@@ -229,12 +250,6 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    cargo install espflash
    ```
 
-   Or on Windows:
-
-   ```powershell
-   cargo install espflash
-   ```
-
 > 🎉 **No espup needed!** ESP32-C3 uses RISC-V with standard LLVM backend. Just use stable Rust toolchain!
 
 ### Building
@@ -246,6 +261,8 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    ```
 
 2. **Configure WiFi credentials** in `src/main.rs`:
+
+   Set these to your existing 2.4 GHz Wi-Fi network's SSID and password (the ESP32 connects to your router as a client, not as an Access Point):
 
    ```rust
    const WIFI_SSID: &str = "YOUR_WIFI_SSID";
@@ -296,28 +313,33 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 ## Usage
 
 1. **Power on** the ESP32 and LED matrix
-2. **Wait for WiFi connection** (check serial monitor for IP address)
-3. **Open web browser** on your phone/computer
-4. **Navigate to** `http://<ESP32_IP_ADDRESS>/`
-5. **Enter text** in the input field and click "Display Text"
+2. **Observe the status pixel** in the top-right corner ($x=87, y=0$):
+   - **Amber slow blink**: Connecting to local Wi-Fi router
+   - **Cyan fast blink**: Acquiring DHCP IP lease
+   - **Dim green heartbeat**: Connected and ready!
+   - **Red rapid strobe**: Connection failed or Wi-Fi dropped (check credentials / router)
+3. **Check assigned IP address** in the serial monitor or your router's DHCP client table
+4. **Connect your device** (phone, tablet, computer) to the **same WiFi network**
+5. **Open web browser** and navigate to `http://<ESP32_IP_ADDRESS>/`
+6. **Enter text** in the input field and click "Display Text"
 
 ## API Endpoints
 
-| Endpoint | Method | Query Parameters | Description |
-| --- | --- | --- | --- |
-| `/` | GET | — | Interactive web interface with position, color picker, and clear toggles |
-| `/text` | GET | `msg`, `x`, `y`, `color`, `clear` | Render text to the LED matrix |
-| `/clear` | GET | — | Clear the LED matrix to black |
+| Endpoint | Method | Query Parameters                  | Description                                                              |
+| -------- | ------ | --------------------------------- | ------------------------------------------------------------------------ |
+| `/`      | GET    | —                                 | Interactive web interface with position, color picker, and clear toggles |
+| `/text`  | GET    | `msg`, `x`, `y`, `color`, `clear` | Render text to the LED matrix                                            |
+| `/clear` | GET    | —                                 | Clear the LED matrix to black                                            |
 
 ### `/text` Query Parameters
 
-| Parameter | Type | Default | Description |
-| --- | --- | --- | --- |
-| `msg` | string | `""` | Text to render (up to 32 characters, ASCII 32–126). Supports `\n` for line breaks. |
-| `x` | integer | `4` (or auto-centered) | Starting X column coordinate ($0..87$). Supports negative values for partial clipping. |
-| `y` | integer | `40` (vertically centered) | Starting Y row coordinate ($0..87$). Supports negative values for partial clipping. |
-| `color` | hex string | `#FFFFFF` (white) | 24-bit RGB hex color (e.g. `FF8000`, `#00FF88`, or `%23FF0000`). Scaled to 16-bit PWM channels. |
-| `clear` | boolean (`1`/`0`) | `1` (true) | When `1`, clears the matrix before drawing. When `0`, overlays text onto existing content. |
+| Parameter | Type              | Default                    | Description                                                                                     |
+| --------- | ----------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `msg`     | string            | `""`                       | Text to render (up to 32 characters, ASCII 32–126). Supports `\n` for line breaks.              |
+| `x`       | integer           | `4` (or auto-centered)     | Starting X column coordinate ($0..87$). Supports negative values for partial clipping.          |
+| `y`       | integer           | `40` (vertically centered) | Starting Y row coordinate ($0..87$). Supports negative values for partial clipping.             |
+| `color`   | hex string        | `#FFFFFF` (white)          | 24-bit RGB hex color (e.g. `FF8000`, `#00FF88`, or `%23FF0000`). Scaled to 16-bit PWM channels. |
+| `clear`   | boolean (`1`/`0`) | `1` (true)                 | When `1`, clears the matrix before drawing. When `0`, overlays text onto existing content.      |
 
 #### Examples
 
@@ -387,6 +409,7 @@ esp32-led-matrix/
 │   ├── http_page.html  # Modern glassmorphism web UI with position & color controls
 │   ├── http_server.rs  # Async HTTP server task (embassy-net)
 │   ├── led_matrix.rs   # Hardware driver & GPIO pulse multiplexer
+│   ├── status_indicator.rs # 1-pixel WiFi & system status overlay (top-right corner)
 │   └── wifi.rs         # WiFi initialization & DHCP stack management
 └── tests/
     └── integration_tests.rs # End-to-end pipeline & query parsing tests

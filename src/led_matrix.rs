@@ -207,6 +207,16 @@ impl LedMatrix {
         &mut self.buffer
     }
 
+    /// Overlay the status indicator pixel at (87, 0).
+    #[allow(dead_code)]
+    pub fn apply_status(
+        &mut self,
+        indicator: &esp32_led_matrix::status_indicator::StatusIndicator,
+        time_ms: u64,
+    ) {
+        indicator.apply(&mut self.buffer, time_ms);
+    }
+
     /// Initialize the display with configuration.
     fn init(&mut self) {
         self.set_all_pins_low();

@@ -13,6 +13,10 @@ use esp32_led_matrix::chain_mapper::{
 use esp32_led_matrix::font::Font;
 use esp32_led_matrix::frame_buffer::FrameBuffer;
 use esp32_led_matrix::http_request::{MAX_MESSAGE_LEN, NOT_FOUND_RESPONSE, dispatch, html_page};
+use esp32_led_matrix::status_indicator::{
+    COLOR_CONNECTED, COLOR_CONNECTING, COLOR_ERROR, COLOR_OFF, COLOR_WAITING_DHCP, STATUS_PIXEL_X,
+    STATUS_PIXEL_Y, StatusIndicator, StatusState,
+};
 use esp32_led_matrix::{MATRIX_HEIGHT, MATRIX_WIDTH};
 
 #[test]
@@ -175,6 +179,79 @@ fn chain_data_bits_last_bit_is_le_high_for_full_frame() {
     assert!(matches!(bits.last(), Some(ChainBit { le_high: true, .. })));
     for b in &bits[..bits.len() - 1] {
         assert!(!b.le_high);
+    }
+}
+
+#[test]
+fn status_indicator_integrates_with_rendered_text_overlay() {
+    let mut fb = FrameBuffer::new();
+    // Render text in the center of the display
+    fb.draw_text_at("HELLO", 4, 40, 0xFFFF, 0xFFFF, 0xFFFF);
+
+    let indicator = StatusIndicator::new(StatusState::Connected);
+
+    // At t=0 ms (heartbeat pulse 1 ON), status pixel is lit with dim green
+    indicator.apply(&mut fb, 0);
+    assert_eq!(
+        fb.get_pixel(STATUS_PIXEL_X, STATUS_PIXEL_Y),
+        COLOR_CONNECTED
+    );
+
+    // Verify text at (4, 40) is still intact and not corrupted
+    let mut text_pixel_found = false;
+    for y in 40..47 {
+        for x in 4..10 {
+            if fb.get_pixel(x, y) == [0xFFFF, 0xFFFF, 0xFFFF] {
+                text_pixel_found = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        text_pixel_found,
+        "Centered text pixels must remain intact after status overlay"
+    );
+
+    // At t=1500 ms (heartbeat quiet phase), status pixel turns off
+    indicator.apply(&mut fb, 1500);
+    assert_eq!(fb.get_pixel(STATUS_PIXEL_X, STATUS_PIXEL_Y), COLOR_OFF);
+}
+
+#[test]
+fn status_indicator_cycles_through_all_network_phases() {
+    let mut indicator = StatusIndicator::new(StatusState::Connecting);
+    assert_eq!(indicator.pixel_color(0), COLOR_CONNECTING);
+    assert_eq!(indicator.pixel_color(600), COLOR_OFF);
+
+    indicator.set_state(StatusState::WaitingDhcp);
+    assert_eq!(indicator.pixel_color(100), COLOR_WAITING_DHCP);
+    assert_eq!(indicator.pixel_color(300), COLOR_OFF);
+
+    indicator.set_state(StatusState::Connected);
+    assert_eq!(indicator.pixel_color(50), COLOR_CONNECTED);
+    assert_eq!(indicator.pixel_color(150), COLOR_OFF);
+    assert_eq!(indicator.pixel_color(300), COLOR_CONNECTED);
+    assert_eq!(indicator.pixel_color(1000), COLOR_OFF);
+
+    indicator.set_state(StatusState::Error);
+    assert_eq!(indicator.pixel_color(50), COLOR_ERROR);
+    assert_eq!(indicator.pixel_color(200), COLOR_OFF);
+}
+
+#[test]
+fn status_indicator_runs_through_chain_mapper_pipeline() {
+    let mut fb = FrameBuffer::new();
+    let indicator = StatusIndicator::new(StatusState::Connected);
+    indicator.apply(&mut fb, 0);
+
+    // Verify mapping to chains succeeds without panicking
+    let frame = compute_full_frame(fb.as_pixels());
+    assert_eq!(frame.len(), SCANLINES * LEDS_PER_IC);
+
+    // Ensure the bitstream generation handles the status pixel frame
+    for cycle in frame.iter() {
+        let bits = chain_data_bits(cycle);
+        assert_eq!(bits.len(), ICS_PER_CHAIN * 16);
     }
 }
 

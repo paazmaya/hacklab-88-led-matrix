@@ -10,11 +10,28 @@ use embassy_executor::Spawner;
 use embassy_net::{Config, Stack, StackResources};
 use esp_radio::Controller;
 use esp_radio::wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent};
+use esp32_led_matrix::status_indicator::StatusState;
 use log::{error, info};
 use static_cell::StaticCell;
 
 use crate::WIFI_PASSWORD;
 use crate::WIFI_SSID;
+
+/// Tracks whether the WiFi connection encountered an error (failed to connect or disconnected).
+static WIFI_ERROR: critical_section::Mutex<core::cell::Cell<bool>> =
+    critical_section::Mutex::new(core::cell::Cell::new(false));
+
+/// Update WiFi error state.
+pub fn set_wifi_error(error: bool) {
+    critical_section::with(|cs| {
+        WIFI_ERROR.borrow(cs).set(error);
+    });
+}
+
+/// Check if WiFi is currently in an error state.
+pub fn is_wifi_error() -> bool {
+    critical_section::with(|cs| WIFI_ERROR.borrow(cs).get())
+}
 
 /// Global radio controller — must outlive `WifiController` and `WifiDevice`.
 static RADIO_CONTROLLER: StaticCell<Controller<'static>> = StaticCell::new();
@@ -86,6 +103,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, WifiDevice<'static>>)
 ///
 /// Polls the embassy-net stack for link-up state and an IPv4 configuration.
 /// Yields to the executor between polls so other tasks can make progress.
+#[allow(dead_code)]
 pub async fn wait_for_connection(stack: &Stack<'static>) {
     info!("Waiting for WiFi link...");
     while !stack.is_link_up() {
@@ -114,6 +132,19 @@ pub fn get_ip_address(stack: &Stack<'static>) -> Option<heapless::String<16>> {
     Some(s)
 }
 
+/// Determine the current Wi-Fi / system status.
+pub fn get_status(stack: &Stack<'static>) -> StatusState {
+    if is_wifi_error() {
+        StatusState::Error
+    } else if !stack.is_link_up() {
+        StatusState::Connecting
+    } else if stack.config_v4().is_none() {
+        StatusState::WaitingDhcp
+    } else {
+        StatusState::Connected
+    }
+}
+
 /// WiFi connection task — starts WiFi, then connects and reconnects as needed.
 ///
 /// `WifiController::connect_async` resolves once the station is associated to
@@ -125,16 +156,20 @@ async fn wifi_connection_task(mut controller: WifiController<'static>) {
     controller.start_async().await.unwrap();
 
     loop {
+        set_wifi_error(false);
         info!("Connecting to SSID: {}", WIFI_SSID);
         match controller.connect_async().await {
             Ok(()) => {
                 info!("WiFi connected!");
+                set_wifi_error(false);
                 // Wait until disconnected before attempting reconnect.
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
                 info!("WiFi disconnected, reconnecting...");
+                set_wifi_error(true);
             }
             Err(e) => {
                 error!("WiFi connect error: {:?}", e);
+                set_wifi_error(true);
                 embassy_time::Timer::after(embassy_time::Duration::from_secs(2)).await;
             }
         }

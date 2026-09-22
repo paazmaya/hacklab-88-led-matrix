@@ -38,6 +38,8 @@ pub const MATRIX_WIDTH: usize = 88;
 pub const MATRIX_HEIGHT: usize = 88;
 
 /// WiFi credentials - MODIFY THESE FOR YOUR NETWORK
+/// Note: The ESP32 operates in Station (client) mode, connecting to your existing
+/// 2.4 GHz Wi-Fi router. Clients (phone, laptop) must be on the same network.
 /// (For Wokwi simulation, use SSID "Wokwi-GUEST" with empty password "")
 const WIFI_SSID: &str = "YOUR_WIFI_SSID";
 const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
@@ -91,28 +93,36 @@ async fn main(spawner: Spawner) {
     info!("Initializing WiFi...");
     let wifi_stack = wifi::init_wifi_inline(spawner, peripherals.WIFI);
 
-    // Wait for WiFi connection (link up + DHCP lease)
-    info!("Waiting for WiFi connection...");
-    wifi::wait_for_connection(wifi_stack).await;
-    info!("WiFi connected!");
-
-    // Get and display IP address
-    if let Some(ip) = wifi::get_ip_address(wifi_stack) {
-        info!("IP Address: http://{}/", ip);
-    } else {
-        info!("WiFi ready, but no IP address yet");
-    }
-
     // Spawn the HTTP server task, handing it a reference to the network stack
     spawner
         .spawn(http_server::http_server_task(wifi_stack))
         .ok();
 
-    info!("=== System Ready ===");
-    info!("Open http://<ESP32_IP>/ in your browser to control the display");
+    info!("=== System Starting ===");
+    info!("Connecting to WiFi SSID: {}", WIFI_SSID);
+
+    let mut status_indicator = esp32_led_matrix::status_indicator::StatusIndicator::new(
+        esp32_led_matrix::status_indicator::StatusState::Connecting,
+    );
+    let mut logged_ip = false;
 
     // Main display refresh loop
     loop {
+        // Update Wi-Fi connection and network status
+        let current_status = wifi::get_status(wifi_stack);
+        status_indicator.set_state(current_status);
+
+        if current_status == esp32_led_matrix::status_indicator::StatusState::Connected
+            && !logged_ip
+        {
+            if let Some(ip) = wifi::get_ip_address(wifi_stack) {
+                info!("WiFi connected! Open http://{}/ to control the display", ip);
+                logged_ip = true;
+            }
+        } else if current_status != esp32_led_matrix::status_indicator::StatusState::Connected {
+            logged_ip = false;
+        }
+
         // Check for new display command
         {
             let mut lock = DISPLAY_COMMAND.lock().await;
@@ -134,6 +144,10 @@ async fn main(spawner: Spawner) {
                 }
             }
         }
+
+        // Overlay status indicator in upper-right corner (x = 87, y = 0)
+        let now_ms = embassy_time::Instant::now().as_millis();
+        status_indicator.apply(led_matrix.buffer_mut(), now_ms);
 
         // Multiplexed LED matrix refresh
         led_matrix.refresh();
