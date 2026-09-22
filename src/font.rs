@@ -129,7 +129,7 @@ const GLYPH_TABLE: [Option<&'static Glyph>; ASCII_COUNT] = [
     Some(&UPPER_Y),     //  89 (0x59) 'Y'
     Some(&UPPER_Z),     //  90 (0x5a) 'Z'
     None,               //  91 (0x5b) '[' (no glyph)
-    None,               //  92 (0x5c) '\\' (no glyph)
+    Some(&BACKSLASH),   //  92 (0x5c) '\\'
     None,               //  93 (0x5d) ']' (no glyph)
     None,               //  94 (0x5e) '^' (no glyph)
     None,               //  95 (0x5f) '_' (no glyph)
@@ -326,6 +326,16 @@ const SLASH: Glyph = [
     [0, 1, 0, 0, 0],
     [0, 1, 0, 0, 0],
     [1, 0, 0, 0, 0],
+];
+
+const BACKSLASH: Glyph = [
+    [1, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 1],
 ];
 
 const DIGIT_0: Glyph = [
@@ -908,5 +918,15 @@ mod tests {
         let glyph1 = font.get_glyph('X').unwrap();
         let glyph2 = font.get_glyph('X').unwrap();
         assert_eq!(glyph1 as *const _, glyph2 as *const _);
+    }
+
+    #[test]
+    fn test_backslash_glyph() {
+        let font = Font::new();
+        let glyph = font.get_glyph('\\').expect("backslash glyph should exist");
+        assert_eq!(glyph.len(), FONT_HEIGHT);
+        // Verify diagonal pixels from top-left (0,0) to bottom-right (4,6)
+        assert_eq!(glyph[0][0], 1);
+        assert_eq!(glyph[6][4], 1);
     }
 }

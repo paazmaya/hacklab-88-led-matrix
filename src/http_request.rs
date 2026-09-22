@@ -108,10 +108,10 @@ pub fn dispatch(request: &[u8]) -> Response {
             },
         );
     }
-    if is_text_update_request(request_str)
-        && let Some(cmd) = extract_display_command(request_str)
-    {
-        return Response::html_with_command(OK_HTML_RESPONSE, cmd);
+    if is_text_update_request(request_str) {
+        if let Some(cmd) = extract_display_command(request_str) {
+            return Response::html_with_command(OK_HTML_RESPONSE, cmd);
+        }
     }
 
     Response::not_found()
@@ -236,16 +236,26 @@ pub fn extract_query_message(request: &str) -> Option<heapless::String<MAX_MESSA
 
 /// Percent-decode a URL-encoded string, capped at [`MAX_MESSAGE_LEN`]
 /// characters. Stops at the first character that would overflow.
+/// Converts escaped line breaks (`\n` or `\N`) into actual newline characters (`\n`).
 fn url_decode(encoded: &str) -> Option<heapless::String<MAX_MESSAGE_LEN>> {
     let mut out = heapless::String::new();
     let mut chars = encoded.chars().peekable();
 
     while let Some(c) = chars.next() {
-        let decoded_char = match c {
+        let mut decoded_char = match c {
             '%' => decode_percent(&mut chars)?,
             '+' => ' ',
             other => other,
         };
+        // Unescape literal \n or \N from web forms or query strings to real newline
+        if decoded_char == '\\' {
+            if let Some(&next_c) = chars.peek() {
+                if next_c == 'n' || next_c == 'N' {
+                    chars.next();
+                    decoded_char = '\n';
+                }
+            }
+        }
         if out.push(decoded_char).is_err() {
             // Buffer full — stop here. Caller sees a truncated message
             // rather than no message at all.
@@ -410,5 +420,66 @@ mod tests {
         assert_eq!(cmd.y, None);
         assert_eq!(cmd.color, [0xFFFF, 0xFFFF, 0xFFFF]);
         assert_eq!(cmd.clear, true);
+    }
+
+    #[test]
+    fn url_decode_unescapes_literal_newline() {
+        let decoded = url_decode(r"line1\nline2").unwrap();
+        assert_eq!(decoded.as_str(), "line1\nline2");
+
+        let decoded_upper = url_decode(r"line1\Nline2").unwrap();
+        assert_eq!(decoded_upper.as_str(), "line1\nline2");
+    }
+
+    #[test]
+    fn url_decode_unescapes_percent_encoded_backslash_newline() {
+        let decoded = url_decode("line1%5Cnline2").unwrap();
+        assert_eq!(decoded.as_str(), "line1\nline2");
+    }
+
+    #[test]
+    fn url_decode_unescapes_percent_0a_newline() {
+        let decoded = url_decode("line1%0Aline2").unwrap();
+        assert_eq!(decoded.as_str(), "line1\nline2");
+    }
+
+    #[test]
+    fn url_decode_preserves_single_backslash_if_not_n() {
+        let decoded = url_decode(r"A\tB\rC").unwrap();
+        assert_eq!(decoded.as_str(), r"A\tB\rC");
+    }
+
+    #[test]
+    fn extract_display_command_negative_coords() {
+        let req = "GET /text?msg=hi&x=-12&y=-34 HTTP/1.1";
+        let cmd = extract_display_command(req).unwrap();
+        assert_eq!(cmd.x, Some(-12));
+        assert_eq!(cmd.y, Some(-34));
+    }
+
+    #[test]
+    fn extract_display_command_unknown_query_keys_ignored() {
+        let req = "GET /text?msg=ok&foo=bar&clear=true&unknown=123 HTTP/1.1";
+        let cmd = extract_display_command(req).unwrap();
+        assert_eq!(cmd.text.as_str(), "ok");
+        assert_eq!(cmd.clear, true);
+    }
+
+    #[test]
+    fn extract_display_command_boolean_clear_variations() {
+        let cmd1 = extract_display_command("GET /text?clear=1 HTTP/1.1").unwrap();
+        assert!(cmd1.clear);
+
+        let cmd2 = extract_display_command("GET /text?clear=true HTTP/1.1").unwrap();
+        assert!(cmd2.clear);
+
+        let cmd3 = extract_display_command("GET /text?clear=TRUE HTTP/1.1").unwrap();
+        assert!(cmd3.clear);
+
+        let cmd4 = extract_display_command("GET /text?clear=0 HTTP/1.1").unwrap();
+        assert!(!cmd4.clear);
+
+        let cmd5 = extract_display_command("GET /text?clear=false HTTP/1.1").unwrap();
+        assert!(!cmd5.clear);
     }
 }

@@ -37,12 +37,18 @@ use crate::led_matrix::LedMatrix;
 pub const MATRIX_WIDTH: usize = 88;
 pub const MATRIX_HEIGHT: usize = 88;
 
-/// WiFi credentials - MODIFY THESE FOR YOUR NETWORK
-/// Note: The ESP32 operates in Station (client) mode, connecting to your existing
-/// 2.4 GHz Wi-Fi router. Clients (phone, laptop) must be on the same network.
-/// (For Wokwi simulation, use SSID "Wokwi-GUEST" with empty password "")
-const WIFI_SSID: &str = "YOUR_WIFI_SSID";
-const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
+/// WiFi credentials - can be configured via environment variables at compile time
+/// (e.g. `WIFI_SSID="MyRouter" WIFI_PASSWORD="secret" cargo release-esp32`)
+/// Defaults to "Wokwi-GUEST" and empty password for immediate out-of-the-box Wokwi simulation.
+pub const WIFI_SSID: &str = match option_env!("WIFI_SSID") {
+    Some(val) => val,
+    None => "Wokwi-GUEST",
+};
+
+pub const WIFI_PASSWORD: &str = match option_env!("WIFI_PASSWORD") {
+    Some(val) => val,
+    None => "",
+};
 
 /// Global display command buffer
 pub static DISPLAY_COMMAND: embassy_sync::mutex::Mutex<
@@ -145,11 +151,12 @@ async fn main(spawner: Spawner) {
             }
         }
 
-        // Overlay status indicator in upper-right corner (x = 87, y = 0)
+        // Overlay status indicator in upper-right corner (x = 87, y = 0).
+        // Marks the matrix dirty only if the status pixel color changed.
         let now_ms = embassy_time::Instant::now().as_millis();
-        status_indicator.apply(led_matrix.buffer_mut(), now_ms);
+        led_matrix.apply_status(&status_indicator, now_ms);
 
-        // Multiplexed LED matrix refresh
+        // Multiplexed LED matrix refresh (shifts data if dirty, then runs high-duty multiplexing)
         led_matrix.refresh();
 
         // Small delay to prevent watchdog

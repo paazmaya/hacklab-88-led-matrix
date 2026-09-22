@@ -4,7 +4,8 @@
 //! `http_request` module.
 
 use crate::DISPLAY_COMMAND;
-use embassy_net::{Stack, tcp::TcpSocket};
+use embassy_net::{tcp::TcpSocket, Stack};
+use embedded_io_async::Write;
 use esp32_led_matrix::http_request;
 use log::{debug, info};
 
@@ -70,25 +71,25 @@ async fn apply_command_update(command: Option<http_request::DisplayCommand>) {
     }
 }
 
-/// Write the response body to the socket. For HTML pages we append the
-/// page body after the headers; everything else already includes its
-/// own headers.
+/// Write the response body to the socket. Streams headers and HTML page body
+/// directly using `write_all` without large stack buffers, and flushes before closing.
 async fn write_response(socket: &mut TcpSocket<'_>, body: &'static [u8]) {
-    let mut response_data = [0u8; 8192];
-    let mut offset;
-
     if body.starts_with(b"HTTP/1.1 200") {
-        response_data[..body.len()].copy_from_slice(body);
-        offset = body.len();
+        if let Err(e) = socket.write_all(body).await {
+            debug!("Header write error: {:?}", e);
+            return;
+        }
         let page = http_request::html_page();
-        response_data[offset..offset + page.len()].copy_from_slice(page);
-        offset += page.len();
-    } else {
-        response_data[..body.len()].copy_from_slice(body);
-        offset = body.len();
+        if let Err(e) = socket.write_all(page).await {
+            debug!("Body write error: {:?}", e);
+            return;
+        }
+    } else if let Err(e) = socket.write_all(body).await {
+        debug!("Write error: {:?}", e);
+        return;
     }
 
-    if let Err(e) = socket.write(&response_data[..offset]).await {
-        debug!("Write error: {:?}", e);
+    if let Err(e) = socket.flush().await {
+        debug!("Flush error: {:?}", e);
     }
 }

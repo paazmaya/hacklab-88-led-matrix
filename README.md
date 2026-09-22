@@ -262,20 +262,26 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    cd esp32-led-matrix
    ```
 
-2. **Configure WiFi credentials** in `src/main.rs`:
+2. **Configure WiFi credentials**:
 
-   Configure these with the target 2.4 GHz Wi-Fi network SSID and password (the ESP32 connects to an external router as a client, not as an Access Point):
-
-   ```rust
-   const WIFI_SSID: &str = "YOUR_WIFI_SSID";
-   const WIFI_PASSWORD: &str = "YOUR_WIFI_PASSWORD";
-   ```
-
-3. **Build the project** (the embedded build uses the `esp` toolchain via `cargo +esp` and the `build-esp32`/`release-esp32` aliases defined in `.cargo/config.toml`, which set `--target riscv32imc-unknown-none-elf --features esp32`):
+   WiFi credentials default to `Wokwi-GUEST` with an empty password for simulation. For a real Wi-Fi network, either set environment variables when building:
 
    ```bash
-   cargo +esp build-esp32          # debug build
-   cargo +esp release-esp32        # optimised release build
+   WIFI_SSID="YOUR_SSID" WIFI_PASSWORD="YOUR_PASSWORD" cargo release-esp32
+   ```
+
+   Or edit the defaults in `src/main.rs`:
+
+   ```rust
+   pub const WIFI_SSID: &str = ...;
+   pub const WIFI_PASSWORD: &str = ...;
+   ```
+
+3. **Build the project** (the embedded build uses the stable toolchain via `cargo` and the `build-esp32`/`release-esp32` aliases defined in `.cargo/config.toml`, which set `--target riscv32imc-unknown-none-elf --features esp32`):
+
+   ```bash
+   cargo build-esp32          # debug build
+   cargo release-esp32        # optimised release build
    ```
 
    The resulting ELF is at `target/riscv32imc-unknown-none-elf/{release,debug}/esp32-led-matrix`.
@@ -289,7 +295,7 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    **Automatic port detection (uses the runner from `.cargo/config.toml`):**
 
    ```bash
-   cargo +esp run --release
+   cargo run --release
    ```
 
    **Or specify port manually:**
@@ -297,13 +303,13 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    **Linux/macOS:**
 
    ```bash
-   cargo +esp espflash flash --release --monitor /dev/ttyUSB0
+   cargo espflash flash --release --monitor /dev/ttyUSB0
    ```
 
    **Windows:**
 
    ```powershell
-   cargo +esp espflash flash --release --monitor COM3
+   cargo espflash flash --release --monitor COM3
    ```
 
    (Replace `COM3` with the actual COM port)
@@ -480,12 +486,11 @@ This project is optimized for **ESP32-C3 SuperMini**. For other boards:
    The `unsafe-assume-single-core` feature on `portable-atomic` is only legal on the embedded target — it must not be enabled when building for the host. Use the project's `build-esp32` / `release-esp32` aliases (or pass `--target riscv32imc-unknown-none-elf` explicitly) instead of bare `cargo build`:
 
    ```bash
-   cargo +esp build-esp32
+   cargo build-esp32
    ```
 
 3. **Compilation errors with esp-hal**
-   - Ensure the `esp` toolchain is used: `cargo +esp …`
-   - Clean and rebuild if needed: `cargo clean && cargo +esp build-esp32`
+   - Clean and rebuild if needed: `cargo clean && cargo build-esp32`
 
 4. **"unstable feature required" error**
    - Ensure `Cargo.toml` includes the `unstable` feature for esp-hal
@@ -580,8 +585,8 @@ cargo test --no-default-features --target x86_64-pc-windows-msvc
 cargo test --no-default-features --target aarch64-apple-darwin
 
 # Build for embedded
-cargo +esp build-esp32
-cargo +esp release-esp32
+cargo build-esp32
+cargo release-esp32
 ```
 
 All tests shall pass and the embedded build shall succeed before deploying to ESP32.

@@ -78,6 +78,13 @@
       "attrs": {
         "common": "cathode"
       }
+    },
+    {
+      "type": "chip-matrix-88x88",
+      "id": "matrix",
+      "top": 0,
+      "left": 650,
+      "attrs": {}
     }
   ],
   "connections": [
@@ -153,7 +160,23 @@
     ["sr_r2:Q0", "rgb2:R", "red", ["h:-40", "v:0"]],
     ["sr_g2:Q0", "rgb2:G", "green", ["h:-40", "v:0"]],
     ["sr_b2:Q0", "rgb2:B", "blue", ["h:-40", "v:0"]],
-    ["esp:GND.1", "rgb2:COM", "black", ["h:-10", "v:240"]]
+    ["esp:GND.1", "rgb2:COM", "black", ["h:-10", "v:240"]],
+
+    ["esp:0", "matrix:GCLK", "blue", []],
+    ["esp:1", "matrix:DCLK", "cyan", []],
+    ["esp:2", "matrix:LE", "green", []],
+    ["esp:3", "matrix:A0", "yellow", []],
+    ["esp:4", "matrix:A1", "orange", []],
+    ["esp:5", "matrix:A2", "red", []],
+    ["esp:6", "matrix:A3", "purple", []],
+    ["esp:7", "matrix:DR1", "red", []],
+    ["esp:8", "matrix:DG1", "green", []],
+    ["esp:9", "matrix:DB1", "blue", []],
+    ["esp:10", "matrix:DR2", "red", []],
+    ["esp:20", "matrix:DG2", "green", []],
+    ["esp:21", "matrix:DB2", "blue", []],
+    ["esp:5V", "matrix:5V.1", "red", []],
+    ["esp:GND.1", "matrix:GND.1", "black", []]
   ],
   "dependencies": {}
 }

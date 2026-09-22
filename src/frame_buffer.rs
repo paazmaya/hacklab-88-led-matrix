@@ -272,4 +272,30 @@ mod tests {
         assert!(line1_lit, "line 1 should be lit");
         assert!(line2_lit, "line 2 should be lit");
     }
+
+    #[test]
+    fn draw_text_at_negative_coordinates_gracefully_clips() {
+        let mut fb = FrameBuffer::new();
+        // Negative x and y partially off-screen
+        fb.draw_text_at("A", -2, -2, 0x1111, 0x2222, 0x3333);
+
+        // Verify that pixels within 0..5 and 0..7 are colored
+        let mut in_bounds_lit = false;
+        for y in 0..5 {
+            for x in 0..3 {
+                if fb.get_pixel(x, y) == [0x1111, 0x2222, 0x3333] {
+                    in_bounds_lit = true;
+                }
+            }
+        }
+        assert!(in_bounds_lit, "clipped glyph should have visible pixels");
+    }
+
+    #[test]
+    fn draw_char_backslash_renders() {
+        let mut fb = FrameBuffer::new();
+        fb.draw_char('\\', 10, 10, 0x5555, 0x6666, 0x7777);
+        assert_eq!(fb.get_pixel(10, 10), [0x5555, 0x6666, 0x7777]);
+        assert_eq!(fb.get_pixel(14, 16), [0x5555, 0x6666, 0x7777]);
+    }
 }

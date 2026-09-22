@@ -6,16 +6,16 @@
 //! e.g. a request parsed by `http_request` can be drawn into a
 //! `FrameBuffer` and then mapped to a bit stream for the chain.
 
-use esp32_led_matrix::bit_stream::{ChainBit, chain_data_bits};
+use esp32_led_matrix::bit_stream::{chain_data_bits, ChainBit};
 use esp32_led_matrix::chain_mapper::{
-    CHAIN_LEN, ICS_PER_CHAIN, LEDS_PER_IC, SCANLINES, compute_chain_data, compute_full_frame,
+    compute_chain_data, compute_full_frame, CHAIN_LEN, ICS_PER_CHAIN, LEDS_PER_IC, SCANLINES,
 };
 use esp32_led_matrix::font::Font;
 use esp32_led_matrix::frame_buffer::FrameBuffer;
-use esp32_led_matrix::http_request::{MAX_MESSAGE_LEN, NOT_FOUND_RESPONSE, dispatch, html_page};
+use esp32_led_matrix::http_request::{dispatch, html_page, MAX_MESSAGE_LEN, NOT_FOUND_RESPONSE};
 use esp32_led_matrix::status_indicator::{
-    COLOR_CONNECTED, COLOR_CONNECTING, COLOR_ERROR, COLOR_OFF, COLOR_WAITING_DHCP, STATUS_PIXEL_X,
-    STATUS_PIXEL_Y, StatusIndicator, StatusState,
+    StatusIndicator, StatusState, COLOR_CONNECTED, COLOR_CONNECTING, COLOR_ERROR, COLOR_OFF,
+    COLOR_WAITING_DHCP, STATUS_PIXEL_X, STATUS_PIXEL_Y,
 };
 use esp32_led_matrix::{MATRIX_HEIGHT, MATRIX_WIDTH};
 
@@ -321,4 +321,63 @@ fn http_query_with_coordinates_color_and_overlay() {
 
     // Verify pixel from first text ('A' at 0, 0) is still intact (gx=1, gy=0 is lit)
     assert_eq!(fb.get_pixel(1, 0), [0xFFFF, 0x0000, 0x0000]);
+}
+
+#[test]
+fn http_multiline_text_with_newline_escape_renders_across_multiple_rows() {
+    // Request with literal \n sequence in msg
+    let req = b"GET /text?msg=A\\nB&x=0&y=0&color=FFFFFF&clear=1 HTTP/1.1\r\n\r\n";
+    let resp = dispatch(req);
+    let cmd = resp.command.expect("command should be present");
+    assert_eq!(cmd.text.as_str(), "A\nB");
+
+    let mut fb = FrameBuffer::new();
+    fb.draw_text_at(
+        &cmd.text,
+        cmd.x.unwrap_or(0),
+        cmd.y.unwrap_or(0),
+        cmd.color[0],
+        cmd.color[1],
+        cmd.color[2],
+    );
+
+    // Line 1 ('A') occupies rows 0..7
+    let mut row_0_to_7_lit = false;
+    for y in 0..7 {
+        for x in 0..5 {
+            if fb.get_pixel(x, y) == [0xFFFF, 0xFFFF, 0xFFFF] {
+                row_0_to_7_lit = true;
+            }
+        }
+    }
+
+    // Line 2 ('B') occupies rows 8..15
+    let mut row_8_to_15_lit = false;
+    for y in 8..15 {
+        for x in 0..5 {
+            if fb.get_pixel(x, y) == [0xFFFF, 0xFFFF, 0xFFFF] {
+                row_8_to_15_lit = true;
+            }
+        }
+    }
+
+    assert!(row_0_to_7_lit, "row 0..7 should have pixels for line 1");
+    assert!(row_8_to_15_lit, "row 8..15 should have pixels for line 2");
+}
+
+#[test]
+fn status_indicator_apply_detects_color_changes() {
+    let mut fb = FrameBuffer::new();
+    let indicator = StatusIndicator::new(StatusState::Connecting);
+
+    // t=0: ON (amber)
+    indicator.apply(&mut fb, 0);
+    assert_eq!(
+        fb.get_pixel(STATUS_PIXEL_X, STATUS_PIXEL_Y),
+        COLOR_CONNECTING
+    );
+
+    // t=500: OFF
+    indicator.apply(&mut fb, 500);
+    assert_eq!(fb.get_pixel(STATUS_PIXEL_X, STATUS_PIXEL_Y), COLOR_OFF);
 }

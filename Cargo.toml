@@ -2,7 +2,7 @@
 name = "esp32-led-matrix"
 version = "0.1.0"
 authors = ["LED Matrix Controller"]
-edition = "2024"
+edition = "2021"
 license = "MIT"
 description = "ESP32-C3 Rust application for controlling 88x88 RGB LED matrix with WiFi HTTP server"
 

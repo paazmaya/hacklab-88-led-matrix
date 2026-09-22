@@ -8,9 +8,9 @@ use core::fmt::Write;
 
 use embassy_executor::Spawner;
 use embassy_net::{Config, Stack, StackResources};
-use esp_radio::Controller;
-use esp_radio::wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent};
 use esp32_led_matrix::status_indicator::StatusState;
+use esp_radio::wifi::{ClientConfig, ModeConfig, WifiController, WifiDevice, WifiEvent};
+use esp_radio::Controller;
 use log::{error, info};
 use static_cell::StaticCell;
 

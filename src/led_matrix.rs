@@ -66,6 +66,12 @@ use esp32_led_matrix::frame_buffer::FrameBuffer;
 /// (current gain 11). We use the wiki value.
 const CONFIG_REGISTER_1: u16 = 0x0A45;
 
+/// Number of complete 11-scanline multiplex cycles to run on each refresh call.
+/// 50 cycles at ~15-20 µs per scanline yields ~8-10 ms of high-duty-cycle
+/// display time per refresh iteration, keeping LEDs bright while cooperatively
+/// yielding to Embassy tasks.
+const MULTIPLEX_CYCLES_PER_REFRESH: u32 = 50;
+
 /// GCLK pulses per scanline (per the wiki: 256 regular pulses + 1 dead-time
 /// pulse = 257 total).
 const GCLK_PULSES_PER_SCANLINE: u32 = 256;
@@ -112,6 +118,13 @@ pub struct LedMatrix {
 
     /// Initialized flag — refresh() is a no-op until init() has run.
     initialized: bool,
+
+    /// Whether the frame buffer has changed and needs to be shifted to the display.
+    dirty: bool,
+
+    /// True after new frame data has been shifted to the back buffer, awaiting VSYNC
+    /// at the scanline 10 -> 0 frame boundary to swap to the front.
+    vsync_pending: bool,
 }
 
 impl LedMatrix {
@@ -167,32 +180,50 @@ impl LedMatrix {
             db2,
             buffer: FrameBuffer::new(),
             initialized: false,
+            dirty: true,
+            vsync_pending: false,
         };
 
         matrix.init();
         matrix
     }
 
+    /// Mark the matrix buffer as dirty so next refresh() shifts updated pixels.
+    #[allow(dead_code)]
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
+    /// Check if the buffer is currently marked dirty.
+    #[allow(dead_code)]
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
     /// Render `text` to the back buffer (cleared first).
     #[allow(dead_code)]
     pub fn display_text(&mut self, text: &str) {
         self.buffer.display_text(text);
+        self.dirty = true;
     }
 
     /// Clear the frame buffer to black.
     pub fn clear(&mut self) {
         self.buffer.clear();
+        self.dirty = true;
     }
 
     /// Draw `text` at signed `(x, y)` coordinates with custom RGB color.
     pub fn draw_text_at(&mut self, text: &str, x: i32, y: i32, r: u16, g: u16, b: u16) {
         self.buffer.draw_text_at(text, x, y, r, g, b);
+        self.dirty = true;
     }
 
     /// Draw a single character at signed `(x, y)` coordinates with custom RGB color.
     #[allow(dead_code)]
     pub fn draw_char(&mut self, ch: char, x: i32, y: i32, r: u16, g: u16, b: u16) {
         self.buffer.draw_char(ch, x, y, r, g, b);
+        self.dirty = true;
     }
 
     /// Reference to the internal frame buffer.
@@ -204,17 +235,30 @@ impl LedMatrix {
     /// Mutable reference to the internal frame buffer.
     #[allow(dead_code)]
     pub fn buffer_mut(&mut self) -> &mut FrameBuffer {
+        self.dirty = true;
         &mut self.buffer
     }
 
     /// Overlay the status indicator pixel at (87, 0).
+    /// Returns `true` if the status pixel color changed, marking the buffer dirty.
     #[allow(dead_code)]
     pub fn apply_status(
         &mut self,
         indicator: &esp32_led_matrix::status_indicator::StatusIndicator,
         time_ms: u64,
-    ) {
-        indicator.apply(&mut self.buffer, time_ms);
+    ) -> bool {
+        let old_color = self.buffer.get_pixel(
+            esp32_led_matrix::status_indicator::STATUS_PIXEL_X,
+            esp32_led_matrix::status_indicator::STATUS_PIXEL_Y,
+        );
+        let new_color = indicator.pixel_color(time_ms);
+        if old_color != new_color {
+            indicator.apply(&mut self.buffer, time_ms);
+            self.dirty = true;
+            true
+        } else {
+            false
+        }
     }
 
     /// Initialize the display with configuration.
@@ -262,36 +306,39 @@ impl LedMatrix {
         self.le.set_low();
     }
 
-    /// Refresh the display — must be called continuously.
+    /// Refresh the display — shifts data if dirty, and drives multiplexing.
     ///
-    /// Two phases, per the wiki:
-    /// 1. Shift one full frame of image data into the display's back buffer
-    ///    (the display keeps showing the previous frame while we do this).
-    /// 2. Run a complete multiplex cycle: 256 GCLK pulses per scanline,
-    ///    advancing the address every scanline. At the scanline-10 -> 0
-    ///    wrap-around, issue VSYNC so the display swaps to the back buffer
-    ///    we just filled.
+    /// Per the wiki:
+    /// 1. If buffer is dirty, shift one full frame of image data (11 × 16 = 176
+    ///    cycles of 352 bits) into the display's back buffer.
+    /// 2. Run a batch of complete multiplex cycles (256 GCLK pulses per scanline,
+    ///    advancing A0-A3 every scanline). At the first scanline-10 -> 0 wrap-around
+    ///    after shifting new data, issue VSYNC so the display swaps to the back buffer.
     pub fn refresh(&mut self) {
         if !self.initialized {
             return;
         }
 
-        // Phase 1: send image data for all scanlines. Scope the
-        // immutable borrow of `self.buffer` so it ends before we start
-        // toggling GPIO in `write_chain` (which needs `&mut self`).
-        let mut data = [[0u16; 3]; CHAIN_LEN];
-        for scanline in 0..SCANLINES {
-            for led in 0..PWM_BITS {
-                {
-                    let pixels = self.buffer.as_pixels();
-                    chain_mapper::compute_chain_data(scanline, led, pixels, &mut data);
+        // Phase 1: If pixel data changed, shift new frame data to the back buffer.
+        if self.dirty {
+            let mut data = [[0u16; 3]; CHAIN_LEN];
+            for scanline in 0..SCANLINES {
+                for led in 0..PWM_BITS {
+                    {
+                        let pixels = self.buffer.as_pixels();
+                        chain_mapper::compute_chain_data(scanline, led, pixels, &mut data);
+                    }
+                    self.write_chain(&data);
                 }
-                self.write_chain(&data);
             }
+            self.dirty = false;
+            self.vsync_pending = true;
         }
 
-        // Phase 2: multiplex one frame.
-        self.multiplex_frame();
+        // Phase 2: multiplex multiple complete frames for high duty cycle (~8-10 ms).
+        for _ in 0..MULTIPLEX_CYCLES_PER_REFRESH {
+            self.multiplex_frame();
+        }
     }
 
     /// Run one full multiplex cycle — 11 scanlines, each with 256 GCLK
@@ -302,10 +349,11 @@ impl LedMatrix {
             self.set_scanline(scanline);
             self.pulse_gclk_n(GCLK_PULSES_PER_SCANLINE);
 
-            // VSYNC must be issued at the scanline-10 -> 0 wrap so the
-            // display swaps buffers exactly at the frame boundary.
-            if scanline == SCANLINES - 1 {
+            // VSYNC is issued at the scanline-10 -> 0 wrap ONLY when new frame
+            // data was shifted and is pending display swap.
+            if scanline == SCANLINES - 1 && self.vsync_pending {
                 self.send_command(Command::Vsync);
+                self.vsync_pending = false;
             }
 
             // 257th GCLK pulse: longer high/low phase than the regular
