@@ -482,4 +482,30 @@ mod tests {
         let cmd5 = extract_display_command("GET /text?clear=false HTTP/1.1").unwrap();
         assert!(!cmd5.clear);
     }
+
+    #[test]
+    fn display_command_default_values() {
+        let def = DisplayCommand::default();
+        assert_eq!(def.text.as_str(), "");
+        assert_eq!(def.x, None);
+        assert_eq!(def.y, None);
+        assert_eq!(def.color, [0xFFFF, 0xFFFF, 0xFFFF]);
+        assert!(def.clear);
+    }
+
+    #[test]
+    fn extract_display_command_without_query_returns_default() {
+        let cmd = extract_display_command("GET /text HTTP/1.1").unwrap();
+        assert_eq!(cmd, DisplayCommand::default());
+
+        let cmd_no_http = extract_display_command("GET /text").unwrap();
+        assert_eq!(cmd_no_http, DisplayCommand::default());
+    }
+
+    #[test]
+    fn extract_display_command_empty_query_params_ignored() {
+        let cmd = extract_display_command("GET /text?&msg=hello&&clear=0& HTTP/1.1").unwrap();
+        assert_eq!(cmd.text.as_str(), "hello");
+        assert!(!cmd.clear);
+    }
 }

@@ -298,4 +298,24 @@ mod tests {
         assert_eq!(fb.get_pixel(10, 10), [0x5555, 0x6666, 0x7777]);
         assert_eq!(fb.get_pixel(14, 16), [0x5555, 0x6666, 0x7777]);
     }
+
+    #[test]
+    fn draw_char_unsupported_character_returns_early() {
+        let mut fb = FrameBuffer::new();
+        // A character not in the font table should return early without modifying buffer
+        fb.draw_char('\u{1000}', 0, 0, 0x5555, 0x6666, 0x7777);
+        for row in fb.as_pixels().iter() {
+            for px in row.iter() {
+                assert_eq!(*px, [0, 0, 0]);
+            }
+        }
+    }
+
+    #[test]
+    fn as_pixels_mut_allows_direct_modification() {
+        let mut fb = FrameBuffer::new();
+        let pixels = fb.as_pixels_mut();
+        pixels[5][10] = [0x1234, 0x5678, 0x9ABC];
+        assert_eq!(fb.get_pixel(10, 5), [0x1234, 0x5678, 0x9ABC]);
+    }
 }

@@ -50,6 +50,10 @@
 //! in its own modules so it can be unit-tested on the host. This module owns
 //! the GPIO pins and orchestrates the protocol.
 
+// Exclude this module from code coverage when using Tarpaulin,
+// since it is a hardware-specific ESP32 GPIO driver module.
+#![cfg(not(tarpaulin_include))]
+
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Output;
 
