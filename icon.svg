@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 100 100">
+  <defs>
+    <style>
+      .st0 {
+        fill: #40ff40;
+      }
+
+      .st1 {
+        fill: #4080ff;
+      }
+
+      .st2 {
+        fill: #fff;
+      }
+
+      .st3 {
+        fill: #ff4040;
+      }
+    </style>
+  </defs>
+  <rect width="100" height="100"/>
+  <g>
+    <rect class="st3" x="4" y="4" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st0" x="28" y="4" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st1" x="52" y="4" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st2" x="76" y="4" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st0" x="4" y="28" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st1" x="28" y="28" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st2" x="52" y="28" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st3" x="76" y="28" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st1" x="4" y="52" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st2" x="28" y="52" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st3" x="52" y="52" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st0" x="76" y="52" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st2" x="4" y="76" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st3" x="28" y="76" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st0" x="52" y="76" width="20" height="20" rx="4" ry="4"/>
+    <rect class="st1" x="76" y="76" width="20" height="20" rx="4" ry="4"/>
+  </g>
+</svg>

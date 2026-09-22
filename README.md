@@ -2,6 +2,8 @@
 
 A **pure Rust** ESP32-C3 application for controlling an 88x88 RGB LED matrix display with WiFi connectivity and HTTP web interface.
 
+![88x88 Logo](./icon.png)
+
 > **Built with esp-hal** - No ESP-IDF installation required! Works on Windows, Linux, and macOS.
 >
 > **Configured for ESP32-C3 SuperMini** - Compact RISC-V board with WiFi/BLE. Uses GPIO pins 0-10, 20-21 (13 pins total for LED matrix control)
