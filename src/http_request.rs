@@ -33,6 +33,8 @@ pub struct DisplayCommand {
     pub color: [u16; 3],
     /// Whether to clear the display buffer before drawing.
     pub clear: bool,
+    /// Optional brightness percentage (5..=100).
+    pub brightness: Option<u8>,
 }
 
 impl Default for DisplayCommand {
@@ -43,6 +45,7 @@ impl Default for DisplayCommand {
             y: None,
             color: [0xFFFF, 0xFFFF, 0xFFFF],
             clear: true,
+            brightness: None,
         }
     }
 }
@@ -105,8 +108,14 @@ pub fn dispatch(request: &[u8]) -> Response {
                 y: None,
                 color: [0xFFFF, 0xFFFF, 0xFFFF],
                 clear: true,
+                brightness: None,
             },
         );
+    }
+    if is_brightness_request(request_str) {
+        if let Some(cmd) = extract_brightness_command(request_str) {
+            return Response::html_with_command(OK_HTML_RESPONSE, cmd);
+        }
     }
     if is_text_update_request(request_str) {
         if let Some(cmd) = extract_display_command(request_str) {
@@ -133,9 +142,50 @@ fn is_clear_request(request: &str) -> bool {
     request.contains("GET /clear")
 }
 
+/// True for `GET /brightness`.
+fn is_brightness_request(request: &str) -> bool {
+    request.contains("GET /brightness")
+}
+
 /// True for `GET /text?` or `GET /text `.
 fn is_text_update_request(request: &str) -> bool {
     request.contains("GET /text?") || request.contains("GET /text ")
+}
+
+/// Extract a brightness update command from a `/brightness` request.
+pub fn extract_brightness_command(request: &str) -> Option<DisplayCommand> {
+    let start = request.find("GET /brightness")?;
+    let after_path = &request[start + "GET /brightness".len()..];
+    let query = if let Some(q) = after_path.strip_prefix('?') {
+        let end = q.find([' ', '\r', '\n']).unwrap_or(q.len());
+        &q[..end]
+    } else {
+        ""
+    };
+
+    let mut brightness = None;
+    for param in query.split('&') {
+        if param.is_empty() {
+            continue;
+        }
+        let mut parts = param.splitn(2, '=');
+        let key = parts.next().unwrap_or("");
+        let val = parts.next().unwrap_or("");
+        if key == "val" || key == "brightness" {
+            if let Ok(b) = val.parse::<u8>() {
+                brightness = Some(b.clamp(5, 100));
+            }
+        }
+    }
+
+    brightness.map(|b| DisplayCommand {
+        text: heapless::String::new(),
+        x: None,
+        y: None,
+        color: [0xFFFF, 0xFFFF, 0xFFFF],
+        clear: false,
+        brightness: Some(b),
+    })
 }
 
 /// Parse a 6-digit hex color into 16-bit PWM RGB values `[R, G, B]`.
@@ -180,6 +230,8 @@ pub fn extract_display_command(request: &str) -> Option<DisplayCommand> {
     let mut y = None;
     let mut color = [0xFFFF, 0xFFFF, 0xFFFF];
     let mut clear = None;
+    let mut brightness = None;
+    let mut has_msg = false;
 
     for param in query.split('&') {
         if param.is_empty() {
@@ -191,6 +243,7 @@ pub fn extract_display_command(request: &str) -> Option<DisplayCommand> {
 
         match key {
             "msg" => {
+                has_msg = true;
                 if let Some(decoded) = url_decode(val) {
                     text = decoded;
                 }
@@ -213,16 +266,24 @@ pub fn extract_display_command(request: &str) -> Option<DisplayCommand> {
             "clear" => {
                 clear = Some(val == "1" || val.eq_ignore_ascii_case("true"));
             }
+            "brightness" | "val" => {
+                if let Ok(val_u8) = val.parse::<u8>() {
+                    brightness = Some(val_u8.clamp(5, 100));
+                }
+            }
             _ => {}
         }
     }
+
+    let default_clear = has_msg || brightness.is_none();
 
     Some(DisplayCommand {
         text,
         x,
         y,
         color,
-        clear: clear.unwrap_or(true),
+        clear: clear.unwrap_or(default_clear),
+        brightness,
     })
 }
 
@@ -507,5 +568,31 @@ mod tests {
         let cmd = extract_display_command("GET /text?&msg=hello&&clear=0& HTTP/1.1").unwrap();
         assert_eq!(cmd.text.as_str(), "hello");
         assert!(!cmd.clear);
+    }
+
+    #[test]
+    fn extract_display_command_parses_brightness() {
+        let cmd = extract_display_command("GET /text?msg=hello&brightness=50 HTTP/1.1").unwrap();
+        assert_eq!(cmd.brightness, Some(50));
+        assert_eq!(cmd.text.as_str(), "hello");
+        assert!(cmd.clear);
+
+        // Clamping between 5 and 100
+        let cmd_low = extract_display_command("GET /text?brightness=2 HTTP/1.1").unwrap();
+        assert_eq!(cmd_low.brightness, Some(5));
+        assert!(!cmd_low.clear); // brightness-only defaults clear to false
+
+        let cmd_high = extract_display_command("GET /text?brightness=150 HTTP/1.1").unwrap();
+        assert_eq!(cmd_high.brightness, Some(100));
+    }
+
+    #[test]
+    fn extract_brightness_command_from_route() {
+        let resp = dispatch(b"GET /brightness?val=50 HTTP/1.1");
+        assert!(resp.body.starts_with(b"HTTP/1.1 200"));
+        let cmd = resp.command.unwrap();
+        assert_eq!(cmd.brightness, Some(50));
+        assert!(!cmd.clear);
+        assert_eq!(cmd.text.as_str(), "");
     }
 }

@@ -17,3 +17,4 @@ pub mod status_indicator;
 
 pub const MATRIX_WIDTH: usize = 88;
 pub const MATRIX_HEIGHT: usize = 88;
+pub const DEFAULT_BRIGHTNESS: u8 = 50;

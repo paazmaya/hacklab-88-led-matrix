@@ -29,17 +29,35 @@ pub const LEDS_PER_IC: usize = 16;
 /// Length of the per-cycle chain vector.
 pub const CHAIN_LEN: usize = 44;
 
+/// Scale a single 16-bit color channel by a brightness percentage (0..=100).
+#[inline]
+pub fn scale_channel(channel: u16, brightness: u8) -> u16 {
+    let b = brightness.min(100) as u32;
+    ((channel as u32 * b) / 100) as u16
+}
+
+/// Scale a single pixel [r, g, b] by a brightness percentage (0..=100).
+#[inline]
+pub fn scale_pixel(pixel: Pixel, brightness: u8) -> Pixel {
+    if brightness >= 100 {
+        pixel
+    } else {
+        [
+            scale_channel(pixel[0], brightness),
+            scale_channel(pixel[1], brightness),
+            scale_channel(pixel[2], brightness),
+        ]
+    }
+}
+
 /// Translate the 88x88 frame buffer into the 44-pixel ordering the chain
-/// hardware expects for one `(scanline, led)` cycle.
-///
-/// Per call: fills `data[0..10]` and `data[11..21]` with chain 1's two row
-/// groups, and `data[22..32]` and `data[33..43]` with chain 2's two row
-/// groups for this `(scanline, led)`. The frame buffer is indexed as
-/// `pixels[y][x]`.
-pub fn compute_chain_data(
+/// hardware expects for one `(scanline, led)` cycle, scaling each pixel
+/// by the given `brightness` percentage (0..=100).
+pub fn compute_chain_data_with_brightness(
     scanline: usize,
     led: usize,
     pixels: &[[Pixel; 88]; 88],
+    brightness: u8,
     data: &mut [[u16; 3]; CHAIN_LEN],
 ) {
     // led 0..7 picks one row-group of the scanline; led 8..15 picks the
@@ -59,27 +77,53 @@ pub fn compute_chain_data(
     for &start in &STARTS {
         for i in 0..11usize {
             let col = 8 * i + led_column;
-            data[start + i] = pixels[row][col];
+            data[start + i] = scale_pixel(pixels[row][col], brightness);
         }
         row += 22;
     }
 }
 
-/// Build a complete frame's worth of (scanline, led) → chain-data pairs.
+/// Translate the 88x88 frame buffer into the 44-pixel ordering the chain
+/// hardware expects for one `(scanline, led)` cycle at 100% brightness.
+///
+/// Per call: fills `data[0..10]` and `data[11..21]` with chain 1's two row
+/// groups, and `data[22..32]` and `data[33..43]` with chain 2's two row
+/// groups for this `(scanline, led)`. The frame buffer is indexed as
+/// `pixels[y][x]`.
+pub fn compute_chain_data(
+    scanline: usize,
+    led: usize,
+    pixels: &[[Pixel; 88]; 88],
+    data: &mut [[u16; 3]; CHAIN_LEN],
+) {
+    compute_chain_data_with_brightness(scanline, led, pixels, 100, data);
+}
+
+/// Build a complete frame's worth of (scanline, led) → chain-data pairs
+/// scaled by `brightness` (0..=100).
+pub fn compute_full_frame_with_brightness(
+    pixels: &[[Pixel; 88]; 88],
+    brightness: u8,
+) -> [[[u16; 3]; CHAIN_LEN]; SCANLINES * LEDS_PER_IC] {
+    let mut out = [[[0u16; 3]; CHAIN_LEN]; SCANLINES * LEDS_PER_IC];
+    for scanline in 0..SCANLINES {
+        for led in 0..LEDS_PER_IC {
+            let idx = scanline * LEDS_PER_IC + led;
+            compute_chain_data_with_brightness(scanline, led, pixels, brightness, &mut out[idx]);
+        }
+    }
+    out
+}
+
+/// Build a complete frame's worth of (scanline, led) → chain-data pairs
+/// at 100% brightness.
 ///
 /// Returns 11 × 16 = 176 cycles, each with its associated 44-pixel vector.
 /// The caller typically streams these directly to the shift registers.
 pub fn compute_full_frame(
     pixels: &[[Pixel; 88]; 88],
 ) -> [[[u16; 3]; CHAIN_LEN]; SCANLINES * LEDS_PER_IC] {
-    let mut out = [[[0u16; 3]; CHAIN_LEN]; SCANLINES * LEDS_PER_IC];
-    for scanline in 0..SCANLINES {
-        for led in 0..LEDS_PER_IC {
-            let idx = scanline * LEDS_PER_IC + led;
-            compute_chain_data(scanline, led, pixels, &mut out[idx]);
-        }
-    }
-    out
+    compute_full_frame_with_brightness(pixels, 100)
 }
 
 #[cfg(test)]
@@ -179,5 +223,34 @@ mod tests {
         let mut data = [[0u16; 3]; CHAIN_LEN];
         compute_chain_data(0, 8, &px, &mut data);
         assert_eq!(data[33], [1, 2, 3]);
+    }
+
+    #[test]
+    fn brightness_scaling_scales_channels_proportionally() {
+        assert_eq!(scale_channel(1000, 50), 500);
+        assert_eq!(scale_channel(1000, 100), 1000);
+        assert_eq!(scale_channel(1000, 0), 0);
+        assert_eq!(scale_channel(1000, 25), 250);
+        assert_eq!(scale_channel(0xFFFF, 50), 32767);
+
+        let px = [1000, 2000, 3000];
+        assert_eq!(scale_pixel(px, 50), [500, 1000, 1500]);
+        assert_eq!(scale_pixel(px, 100), [1000, 2000, 3000]);
+        assert_eq!(scale_pixel(px, 0), [0, 0, 0]);
+    }
+
+    #[test]
+    fn compute_chain_data_with_brightness_scales_output() {
+        let px = uniform_pixels(1000, 2000, 3000);
+        let mut data = [[0u16; 3]; CHAIN_LEN];
+        compute_chain_data_with_brightness(0, 0, &px, 50, &mut data);
+        for entry in data.iter() {
+            assert_eq!(*entry, [500, 1000, 1500]);
+        }
+
+        compute_chain_data_with_brightness(0, 0, &px, 20, &mut data);
+        for entry in data.iter() {
+            assert_eq!(*entry, [200, 400, 600]);
+        }
     }
 }

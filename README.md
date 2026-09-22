@@ -13,7 +13,15 @@ https://docs.espressif.com/projects/rust/book/
 ## Overview
 
 This project implements a complete solution for driving the "bonk" LED matrix displays from Helsinki Hacklab.
-The ESP32-C3 SuperMini connects to the local Wi-Fi network and serves a web page to input text for display on the LED matrix.
+The ESP32-C3 SuperMini connects to the local Wi-Fi network and serves a web page to input text and adjust display brightness for the LED matrix.
+
+### Key Features
+
+- **88×88 RGB Matrix Control**: Pure Rust driver using GPIO bit-banging across 6 parallel shift-register chains.
+- **Web-Adjustable Brightness (5%–100%)**: Default 50% brightness for pleasant indoor viewing that cuts peak LED power consumption in half out-of-the-box.
+- **Power Optimization**: Lossless 16-bit PWM scaling, reduced multiplex cycles when idle, and adaptive CPU sleeping (relaxing from 1 ms up to 50 ms when blank).
+- **Embedded Web Interface**: Modern glassmorphism web UI with real-time brightness slider, RGB color picker, coordinates, and clear options.
+- **Top-Right Status Indicator**: Single non-intrusive status pixel reporting network and system states.
 
 ### WiFi Operation (Station / Client Mode)
 
@@ -333,27 +341,37 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 
 ## API Endpoints
 
-| Endpoint | Method | Query Parameters                  | Description                                                              |
-| -------- | ------ | --------------------------------- | ------------------------------------------------------------------------ |
-| `/`      | GET    | —                                 | Interactive web interface with position, color picker, and clear toggles |
-| `/text`  | GET    | `msg`, `x`, `y`, `color`, `clear` | Render text to the LED matrix                                            |
-| `/clear` | GET    | —                                 | Clear the LED matrix to black                                            |
+| Endpoint      | Method | Query Parameters                                | Description                                                                    |
+| ------------- | ------ | ----------------------------------------------- | ------------------------------------------------------------------------------ |
+| `/`           | GET    | —                                               | Interactive web interface with position, color picker, and brightness controls |
+| `/text`       | GET    | `msg`, `x`, `y`, `color`, `clear`, `brightness` | Render text and/or update brightness on the LED matrix                         |
+| `/brightness` | GET    | `val` (or `brightness`)                         | Set display brightness percentage ($5..100$) without modifying on-screen text  |
+| `/clear`      | GET    | —                                               | Clear the LED matrix to black                                                  |
 
 ### `/text` Query Parameters
 
-| Parameter | Type              | Default                    | Description                                                                                     |
-| --------- | ----------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `msg`     | string            | `""`                       | Text to render (up to 32 characters, ASCII 32–126). Supports `\n` for line breaks.              |
-| `x`       | integer           | `4` (or auto-centered)     | Starting X column coordinate ($0..87$). Supports negative values for partial clipping.          |
-| `y`       | integer           | `40` (vertically centered) | Starting Y row coordinate ($0..87$). Supports negative values for partial clipping.             |
-| `color`   | hex string        | `#FFFFFF` (white)          | 24-bit RGB hex color (e.g. `FF8000`, `#00FF88`, or `%23FF0000`). Scaled to 16-bit PWM channels. |
-| `clear`   | boolean (`1`/`0`) | `1` (true)                 | When `1`, clears the matrix before drawing. When `0`, overlays text onto existing content.      |
+| Parameter    | Type               | Default                    | Description                                                                                     |
+| ------------ | ------------------ | -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `msg`        | string             | `""`                       | Text to render (up to 32 characters, ASCII 32–126). Supports `\n` for line breaks.              |
+| `x`          | integer            | `4` (or auto-centered)     | Starting X column coordinate ($0..87$). Supports negative values for partial clipping.          |
+| `y`          | integer            | `40` (vertically centered) | Starting Y row coordinate ($0..87$). Supports negative values for partial clipping.             |
+| `color`      | hex string         | `#FFFFFF` (white)          | 24-bit RGB hex color (e.g. `FF8000`, `#00FF88`, or `%23FF0000`). Scaled to 16-bit PWM channels. |
+| `clear`      | boolean (`1`/`0`)  | `1` (true)                 | When `1`, clears the matrix before drawing. When `0`, overlays text onto existing content.      |
+| `brightness` | integer ($5..100$) | `50` (or unchanged)        | Display brightness percentage ($5\%..100\%$). Losslessly scales all 16-bit PWM channels.        |
 
 #### Examples
 
-- **Default centered text**:
+- **Default centered text at current brightness**:
   ```text
   GET /text?msg=Hello+World
+  ```
+- **Set text with 75% brightness**:
+  ```text
+  GET /text?msg=Dimmed&color=00FF88&brightness=75
+  ```
+- **Adjust brightness only (without changing displayed text)**:
+  ```text
+  GET /brightness?val=25
   ```
 - **Custom coordinate and hex color**:
   ```text
@@ -365,6 +383,28 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
   GET /text?msg=Line+2&x=0&y=10&color=00FF00&clear=0
   GET /text?msg=Line+3&x=0&y=20&color=0088FF&clear=0
   ```
+
+## Power & Energy Optimization
+
+When operating from a battery or looking to reduce heat generation, power management is crucial:
+
+### 1. Brightness Adjustment (Major Impact)
+
+The 88×88 LED matrix can draw up to **10 A at 5 V** at full white ($100\%$ brightness). Because LED current scales linearly with PWM duty cycle:
+
+- **50% Brightness (Default)**: Cuts maximum LED current draw in half (~5 A peak), making it gentle on the eyes for indoor use while drastically saving energy.
+- **20%–25% Brightness**: Suitable for dark or moderately lit rooms, reducing power consumption by 75%–80%.
+- **Lossless Scaling**: Raw 16-bit pixel colors in the frame buffer remain unscaled. Brightness is scaled mathematically on-the-fly during chain shifts, ensuring zero color degradation when toggling brightness.
+
+### 2. Idle & Blank-Screen Power Saving
+
+- **Adaptive Multiplexing**: When the display has active text, the multiplexer runs 50 full cycles per refresh. When the screen is cleared or blank, multiplexing is reduced to zero or minimal cycles to eliminate unnecessary GPIO toggling.
+- **Adaptive Embassy Timer Delay**: The main refresh loop yields with a 1 ms sleep during active rendering. When only the status indicator is blinking or the screen is blank, sleep time relaxes to **20 ms to 50 ms**, reducing CPU utilization and switching power by up to 98%.
+
+### 3. Deep Sleep vs. LED Matrix Characteristics
+
+- **While Displaying Content**: ESP32 deep sleep cannot be used while the matrix is active because the ESP32 CPU drives the scanline sequencing (A0–A3) and PWM multiplex clock (GCLK). If the CPU sleeps, the matrix goes completely dark. Furthermore, deep sleep shuts down the Wi-Fi radio, preventing incoming HTTP connections.
+- **Standby / Screen Off**: When the display is cleared, the LEDs draw 0 A. The ESP32 and Wi-Fi radio pull ~100–150 mA while listening for HTTP connections. If long-term battery standby without Wi-Fi listening is needed, deep sleep with an external wake-up source (e.g. push button) can drop current to microamps.
 
 ## Wokwi Simulation
 
@@ -409,14 +449,14 @@ esp32-led-matrix/
 ├── src/
 │   ├── main.rs         # Embedded binary entry point, pin setup & refresh loop
 │   ├── lib.rs          # Testable library root (font, framebuffer, parser, mapper)
-│   ├── frame_buffer.rs # 88x88 RGB pixel buffer, draw_text_at, draw_char & clipping
+│   ├── frame_buffer.rs # 88x88 RGB pixel buffer, draw_text_at, draw_char & blank detection
 │   ├── font.rs         # 5x7 ASCII bitmap font (ASCII 32–126)
-│   ├── chain_mapper.rs # 88x88 matrix to 6 parallel shift register chains mapping
+│   ├── chain_mapper.rs # 88x88 matrix mapping & lossless brightness scaling
 │   ├── bit_stream.rs   # Bit-level serialization for GPIO pin pulses
-│   ├── http_request.rs # Pure HTTP parsing, query parameters (x, y, color, clear)
-│   ├── http_page.html  # Modern glassmorphism web UI with position & color controls
+│   ├── http_request.rs # Pure HTTP parsing, query parameters (x, y, color, clear, brightness)
+│   ├── http_page.html  # Modern glassmorphism web UI with brightness slider & color picker
 │   ├── http_server.rs  # Async HTTP server task (embassy-net)
-│   ├── led_matrix.rs   # Hardware driver & GPIO pulse multiplexer
+│   ├── led_matrix.rs   # Hardware driver, brightness management & multiplexer
 │   ├── status_indicator.rs # 1-pixel WiFi & system status overlay (top-right corner)
 │   └── wifi.rs         # WiFi initialization & DHCP stack management
 └── tests/

@@ -381,3 +381,40 @@ fn status_indicator_apply_detects_color_changes() {
     indicator.apply(&mut fb, 500);
     assert_eq!(fb.get_pixel(STATUS_PIXEL_X, STATUS_PIXEL_Y), COLOR_OFF);
 }
+
+#[test]
+fn http_brightness_command_scales_chain_data_output() {
+    use esp32_led_matrix::chain_mapper::compute_full_frame_with_brightness;
+    use esp32_led_matrix::DEFAULT_BRIGHTNESS;
+
+    assert_eq!(DEFAULT_BRIGHTNESS, 50);
+
+    // 1. Simulate brightness query parameter
+    let req = b"GET /brightness?val=50 HTTP/1.1\r\n\r\n";
+    let resp = dispatch(req);
+    let cmd = resp.command.expect("brightness command expected");
+    assert_eq!(cmd.brightness, Some(50));
+    assert_eq!(cmd.clear, false);
+
+    // 2. Render text into frame buffer
+    let mut fb = FrameBuffer::new();
+    fb.display_text("A");
+
+    // 3. Compute full frame at 100% and at 50%
+    let frame_100 = compute_full_frame_with_brightness(fb.as_pixels(), 100);
+    let frame_50 = compute_full_frame_with_brightness(fb.as_pixels(), 50);
+
+    let mut lit_found = false;
+    for (cycle_100, cycle_50) in frame_100.iter().zip(frame_50.iter()) {
+        for (px_100, px_50) in cycle_100.iter().zip(cycle_50.iter()) {
+            if *px_100 != [0, 0, 0] {
+                lit_found = true;
+                // Each non-black channel in 50% must be approximately half of 100%
+                for c in 0..3 {
+                    assert_eq!(px_50[c], px_100[c] / 2);
+                }
+            }
+        }
+    }
+    assert!(lit_found, "should find lit pixels from rendered 'A'");
+}

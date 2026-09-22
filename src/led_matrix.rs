@@ -129,6 +129,9 @@ pub struct LedMatrix {
     /// True after new frame data has been shifted to the back buffer, awaiting VSYNC
     /// at the scanline 10 -> 0 frame boundary to swap to the front.
     vsync_pending: bool,
+
+    /// Display brightness percentage (5..=100), defaults to 50%.
+    brightness: u8,
 }
 
 impl LedMatrix {
@@ -186,10 +189,39 @@ impl LedMatrix {
             initialized: false,
             dirty: true,
             vsync_pending: false,
+            brightness: esp32_led_matrix::DEFAULT_BRIGHTNESS,
         };
 
         matrix.init();
         matrix
+    }
+
+    /// Set the display brightness percentage (5..=100).
+    /// Clamps to 5..=100 and marks the display dirty so the new brightness is shifted.
+    pub fn set_brightness(&mut self, brightness: u8) {
+        let clamped = brightness.clamp(5, 100);
+        if self.brightness != clamped {
+            self.brightness = clamped;
+            self.dirty = true;
+        }
+    }
+
+    /// Get the current display brightness percentage.
+    #[allow(dead_code)]
+    pub fn brightness(&self) -> u8 {
+        self.brightness
+    }
+
+    /// Check whether all pixels in the buffer are black.
+    #[allow(dead_code)]
+    pub fn is_blank(&self) -> bool {
+        self.buffer.is_blank()
+    }
+
+    /// Check whether there is active content on the display outside the status pixel.
+    #[allow(dead_code)]
+    pub fn has_content(&self) -> bool {
+        self.buffer.has_content()
     }
 
     /// Mark the matrix buffer as dirty so next refresh() shifts updated pixels.
@@ -326,11 +358,14 @@ impl LedMatrix {
         // Phase 1: If pixel data changed, shift new frame data to the back buffer.
         if self.dirty {
             let mut data = [[0u16; 3]; CHAIN_LEN];
+            let brightness = self.brightness;
             for scanline in 0..SCANLINES {
                 for led in 0..PWM_BITS {
                     {
                         let pixels = self.buffer.as_pixels();
-                        chain_mapper::compute_chain_data(scanline, led, pixels, &mut data);
+                        chain_mapper::compute_chain_data_with_brightness(
+                            scanline, led, pixels, brightness, &mut data,
+                        );
                     }
                     self.write_chain(&data);
                 }
@@ -339,8 +374,26 @@ impl LedMatrix {
             self.vsync_pending = true;
         }
 
-        // Phase 2: multiplex multiple complete frames for high duty cycle (~8-10 ms).
-        for _ in 0..MULTIPLEX_CYCLES_PER_REFRESH {
+        // Phase 2: multiplex frames for duty cycle.
+        // If there is no active user content, reduce multiplex cycles to save energy.
+        let cycles = if self.has_content() {
+            MULTIPLEX_CYCLES_PER_REFRESH
+        } else if self.is_blank() {
+            if self.vsync_pending {
+                1
+            } else {
+                0
+            }
+        } else {
+            // Only status pixel is active — run a brief multiplex pulse
+            if self.vsync_pending {
+                1
+            } else {
+                5
+            }
+        };
+
+        for _ in 0..cycles {
             self.multiplex_frame();
         }
     }

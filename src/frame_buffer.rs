@@ -135,6 +135,29 @@ impl FrameBuffer {
     pub fn as_pixels_mut(&mut self) -> &mut [[Pixel; MATRIX_WIDTH]; MATRIX_HEIGHT] {
         &mut self.pixels
     }
+
+    /// Returns `true` if all pixels in the frame buffer are black (`[0, 0, 0]`).
+    pub fn is_blank(&self) -> bool {
+        self.pixels
+            .iter()
+            .all(|row| row.iter().all(|px| *px == [0, 0, 0]))
+    }
+
+    /// Returns `true` if any pixel outside of the status indicator pixel at (87, 0)
+    /// is non-black.
+    pub fn has_content(&self) -> bool {
+        for y in 0..MATRIX_HEIGHT {
+            for x in 0..MATRIX_WIDTH {
+                if x == 87 && y == 0 {
+                    continue;
+                }
+                if self.pixels[y][x] != [0, 0, 0] {
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 #[cfg(test)]
@@ -317,5 +340,26 @@ mod tests {
         let pixels = fb.as_pixels_mut();
         pixels[5][10] = [0x1234, 0x5678, 0x9ABC];
         assert_eq!(fb.get_pixel(10, 5), [0x1234, 0x5678, 0x9ABC]);
+    }
+
+    #[test]
+    fn is_blank_and_has_content_checks() {
+        let mut fb = FrameBuffer::new();
+        assert!(fb.is_blank());
+        assert!(!fb.has_content());
+
+        // Set status indicator pixel only (87, 0)
+        fb.set_pixel(87, 0, 0x1000, 0x2000, 0x3000);
+        assert!(!fb.is_blank());
+        assert!(!fb.has_content());
+
+        // Set content pixel
+        fb.set_pixel(10, 10, 0x1000, 0x2000, 0x3000);
+        assert!(!fb.is_blank());
+        assert!(fb.has_content());
+
+        fb.clear();
+        assert!(fb.is_blank());
+        assert!(!fb.has_content());
     }
 }

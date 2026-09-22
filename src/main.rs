@@ -133,6 +133,9 @@ async fn main(spawner: Spawner) {
         {
             let mut lock = DISPLAY_COMMAND.lock().await;
             if let Some(cmd) = lock.take() {
+                if let Some(brightness) = cmd.brightness {
+                    led_matrix.set_brightness(brightness);
+                }
                 if cmd.clear {
                     led_matrix.clear();
                 }
@@ -159,7 +162,15 @@ async fn main(spawner: Spawner) {
         // Multiplexed LED matrix refresh (shifts data if dirty, then runs high-duty multiplexing)
         led_matrix.refresh();
 
-        // Small delay to prevent watchdog
-        Timer::after(Duration::from_millis(1)).await;
+        // Adaptive delay: when there is active text, 1 ms keeps refresh smooth and bright.
+        // When only the status indicator or blank screen is active, relax sleep to save energy.
+        let sleep_ms = if led_matrix.has_content() {
+            1
+        } else if led_matrix.is_blank() {
+            50
+        } else {
+            20
+        };
+        Timer::after(Duration::from_millis(sleep_ms)).await;
     }
 }

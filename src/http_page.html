@@ -75,6 +75,15 @@
         background: rgba(255, 255, 255, 0.1);
         cursor: pointer;
       }
+      input[type="range"] {
+        width: 100%;
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.2);
+        outline: none;
+        accent-color: #e94560;
+        cursor: pointer;
+      }
       .checkbox-group {
         display: flex;
         align-items: center;
@@ -183,6 +192,20 @@
             <label for="color">Color:</label>
             <input type="color" id="color" name="color" value="#ffffff" />
           </div>
+        </div>
+        <div class="form-group">
+          <label for="brightness">Brightness: <span id="bright-val">50%</span></label>
+          <input
+            type="range"
+            id="brightness"
+            name="brightness"
+            min="5"
+            max="100"
+            step="5"
+            value="50"
+            oninput="document.getElementById('bright-val').innerText = this.value + '%'"
+            onchange="fetch('/brightness?val=' + this.value)"
+          />
         </div>
         <label class="checkbox-group">
           <input type="checkbox" name="clear" value="1" checked />
