@@ -13,15 +13,15 @@ https://docs.espressif.com/projects/rust/book/
 ## Overview
 
 This project implements a complete solution for driving the "bonk" LED matrix displays from Helsinki Hacklab.
-The ESP32-C3 SuperMini connects to your local WiFi network and serves a web page where you can input text to display on the LED matrix.
+The ESP32-C3 SuperMini connects to the local Wi-Fi network and serves a web page to input text for display on the LED matrix.
 
 ### WiFi Operation (Station / Client Mode)
 
-The ESP32 operates in **Station (STA) mode** as a **client** on your existing network:
+The ESP32 operates in **Station (STA) mode** as a **client** on an existing network:
 
 - **Not an Access Point**: The ESP32 does **not** create its own Wi-Fi hotspot or SoftAP.
-- **Network credentials**: `WIFI_SSID` and `WIFI_PASSWORD` in `src/main.rs` must be set to the credentials of your **existing 2.4 GHz home/office Wi-Fi router**.
-- **Accessing the interface**: Once the ESP32 connects, your router assigns it an IP address via DHCP (printed to the serial monitor at boot). Users connect their phone or laptop to the **same Wi-Fi network** and open `http://<ESP32_IP_ADDRESS>/` in a web browser.
+- **Network credentials**: `WIFI_SSID` and `WIFI_PASSWORD` in `src/main.rs` shall be configured with the credentials of an **existing 2.4 GHz Wi-Fi router**.
+- **Accessing the interface**: Once the ESP32 connects, the network router assigns an IP address via DHCP (printed to the serial monitor at boot). Client devices on the **same Wi-Fi network** access the interface at `http://<ESP32_IP_ADDRESS>/` in a web browser.
 
 ### Status Indicator (Top-Right Pixel)
 
@@ -44,7 +44,7 @@ The ESP32-C3 is Espressif's **RISC-V** based chip with several advantages:
 - **Compact form factor**: SuperMini board is tiny (22.52×18mm), perfect for embedded projects
 - **WiFi + BLE**: Built-in 2.4GHz WiFi and Bluetooth 5.0 LE
 - **Better Rust ecosystem**: Uses stable Rust toolchain, not custom ESP fork
-- **Limited pins**: Only 13 usable GPIOs on SuperMini - exactly what we need for the LED matrix!
+- **Limited pins**: Only 13 usable GPIOs on SuperMini — exactly what is needed for the LED matrix!
 
 **Pin constraints:**
 
@@ -52,7 +52,7 @@ The ESP32-C3 is Espressif's **RISC-V** based chip with several advantages:
 - **This project**: Uses all 13 available GPIOs for LED matrix control
 - **Boot pins**: GPIO8 and GPIO9 are used but work fine with pull-ups on the matrix
 
-If you have a different ESP32 variant, you'll need to modify the pin assignments in [src/main.rs](src/main.rs).
+When using a different ESP32 variant, pin assignments shall be modified in [src/main.rs](src/main.rs).
 
 ## Hardware Requirements
 
@@ -138,9 +138,9 @@ The LED matrix requires 13 control signals:
                     └─────────────────────────────────────┘
 ```
 
-> ⚠️ **Boot pin warning**: GPIO8 and GPIO9 are boot-mode strapping pins. The LED matrix has pull-ups, which keeps them HIGH during boot (normal mode). This works fine but be aware during debugging.
+> ⚠️ **Boot pin warning**: GPIO8 and GPIO9 are boot-mode strapping pins. The LED matrix pull-up resistors keep them HIGH during boot (normal mode). This is operational, but awareness is needed during debugging.
 
-> ⚠️ **UART sharing**: GPIO20/21 are also used for USB serial debugging. Disable serial logging if you see interference with DB2/DG2 data lines.
+> ⚠️ **UART sharing**: GPIO20/21 are also used for USB serial debugging. Serial logging shall be disabled if interference occurs with DB2/DG2 data lines.
 
 ### GPIO Pin Assignment (ESP32-C3 SuperMini)
 
@@ -215,12 +215,12 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 > ⚡ **Why so many +5V and GND pins?** The matrix can pull close to **10 A**
 > at full white. The connector dedicates **12 pins to +5V** and **4 pins to
 > GND** (16 pins total for power), so the per-pin current stays around
-> ~0.8 A — within the safe range of 22 AWG jumper wire. **Wire every single
-> +5V and GND pin to your external supply** — skipping pins to "save time"
-> will cause voltage drop and dim/wrong colors at high brightness.
+> ~0.8 A — within the safe range of 22 AWG jumper wire. **Every single
+> +5V and GND pin shall be wired to the external supply** — omitting pins
+> will cause voltage drop and dim or incorrect colors at high brightness.
 
-> 🔧 **Changing the pin map?** If you rewire to a different ESP32 variant
-> (e.g. ESP32-C6, ESP32-S2/S3), you must update **three** places to keep
+> 🔧 **Changing the pin map:** If rewiring to a different ESP32 variant
+> (e.g. ESP32-C6, ESP32-S2/S3), three locations shall be updated to keep
 > them in sync:
 >
 > 1. The GPIO Pin Assignment table above (ESP32-C3 GPIO → matrix signal)
@@ -264,7 +264,7 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 
 2. **Configure WiFi credentials** in `src/main.rs`:
 
-   Set these to your existing 2.4 GHz Wi-Fi network's SSID and password (the ESP32 connects to your router as a client, not as an Access Point):
+   Configure these with the target 2.4 GHz Wi-Fi network SSID and password (the ESP32 connects to an external router as a client, not as an Access Point):
 
    ```rust
    const WIFI_SSID: &str = "YOUR_WIFI_SSID";
@@ -306,11 +306,11 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
    cargo +esp espflash flash --release --monitor COM3
    ```
 
-   (Replace `COM3` with your actual COM port)
+   (Replace `COM3` with the actual COM port)
 
-3. **Monitor serial output** to see the assigned IP address
+3. **Monitor serial output** to verify the assigned IP address
 
-> **Tip**: The ESP32-C3 SuperMini has auto-reset, so you don't need to manually press BOOT+RESET buttons for flashing!
+> **Tip**: The ESP32-C3 SuperMini features auto-reset; manual pressing of the BOOT+RESET buttons is not needed for flashing.
 
 ## Usage
 
@@ -318,12 +318,12 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 2. **Observe the status pixel** in the top-right corner ($x=87, y=0$):
    - **Amber slow blink**: Connecting to local Wi-Fi router
    - **Cyan fast blink**: Acquiring DHCP IP lease
-   - **Dim green heartbeat**: Connected and ready!
+   - **Dim green heartbeat**: Connected and ready
    - **Red rapid strobe**: Connection failed or Wi-Fi dropped (check credentials / router)
-3. **Check assigned IP address** in the serial monitor or your router's DHCP client table
-4. **Connect your device** (phone, tablet, computer) to the **same WiFi network**
-5. **Open web browser** and navigate to `http://<ESP32_IP_ADDRESS>/`
-6. **Enter text** in the input field and click "Display Text"
+3. **Check assigned IP address** in the serial monitor or the router DHCP client table
+4. **Connect the client device** (phone, tablet, computer) to the **same Wi-Fi network**
+5. **Open a web browser** and navigate to `http://<ESP32_IP_ADDRESS>/`
+6. **Enter text** in the input field and select "Display Text"
 
 ## API Endpoints
 
@@ -374,14 +374,14 @@ This project includes a complete [Wokwi](https://wokwi.com/) simulation configur
 
 ### Running in VS Code
 
-1. Install the [Wokwi for VS Code](https://marketplace.visualstudio.com/items?itemName=wokwi.wokwi-vscode) extension and activate your license.
+1. Install the [Wokwi for VS Code](https://marketplace.visualstudio.com/items?itemName=wokwi.wokwi-vscode) extension and activate the license.
 2. Build the firmware:
    ```bash
    cargo release-esp32
    ```
 3. Open the Command Palette (`F1` or `Cmd+Shift+P`) and choose **Wokwi: Start Simulator**.
-4. The virtual WiFi connects via `Wokwi-GUEST`. Port 80 on the simulated ESP32 is forwarded to port 8080 on your host machine.
-5. Open your web browser at `http://localhost:8080/` to interact with the simulated web server!
+4. Virtual Wi-Fi connects via `Wokwi-GUEST`. Port 80 on the simulated ESP32 is forwarded to port 8080 on the host machine.
+5. Open a web browser at `http://localhost:8080/` to access the simulated web server.
 
 > 💡 **WiFi in Wokwi**: When running in the simulator, set `const WIFI_SSID: &str = "Wokwi-GUEST";` and `const WIFI_PASSWORD: &str = "";` in `src/main.rs`.
 
@@ -484,25 +484,25 @@ This project is optimized for **ESP32-C3 SuperMini**. For other boards:
    ```
 
 3. **Compilation errors with esp-hal**
-   - Make sure you are using the `esp` toolchain: `cargo +esp …`
-   - Try cleaning and rebuilding: `cargo clean && cargo +esp build-esp32`
+   - Ensure the `esp` toolchain is used: `cargo +esp …`
+   - Clean and rebuild if needed: `cargo clean && cargo +esp build-esp32`
 
 4. **"unstable feature required" error**
-   - Make sure `Cargo.toml` includes `unstable` feature for esp-hal
+   - Ensure `Cargo.toml` includes the `unstable` feature for esp-hal
 
 ### Display Shows Nothing
 
-1. **Check power supply** - The matrix needs adequate 5V power (up to 10A) from **external supply**, NOT USB!
-2. **Verify wiring** - Double-check all GPIO connections (especially boot pins GPIO8/9)
-3. **Check serial output** - Look for initialization errors
-4. **UART interference** - If GPIO20/21 show flickering, reduce serial logging
-5. **Boot mode** - Ensure GPIO8/9 are not pulled LOW during power-on (matrix pull-ups should handle this)
+1. **Check power supply** - Adequate 5V power (up to 10A) from an **external supply** is needed; do not power via USB.
+2. **Verify wiring** - Verify all GPIO connections (especially boot pins GPIO8/9).
+3. **Check serial output** - Inspect for initialization errors.
+4. **UART interference** - If GPIO20/21 exhibit flickering, serial logging shall be reduced.
+5. **Boot mode** - Ensure GPIO8/9 are not pulled LOW during power-on (matrix pull-up resistors maintain this state).
 
 ### WiFi Connection Fails
 
-1. **Verify credentials** - Check SSID and password in `src/main.rs`
-2. **Check signal strength** - ESP32 antenna may need better positioning
-3. **Use 2.4GHz network** - ESP32 only supports 2.4GHz WiFi
+1. **Verify credentials** - Check SSID and password in `src/main.rs`.
+2. **Check signal strength** - Antenna repositioning may be needed.
+3. **Use 2.4GHz network** - A 2.4GHz Wi-Fi network is needed (5GHz is unsupported).
 
 ### Text Not Displaying Correctly
 
@@ -532,7 +532,7 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 - **Cannot add more features** without pin sharing or external I/O expander
 - **GPIO8/9** are boot strapping pins - matrix pull-ups keep them HIGH ✓
 - **GPIO20/21** are UART - serial logging may interfere with DG2/DB2 data
-- Consider **ESP32-C6** if you need more pins (30 GPIOs available)
+- Consider **ESP32-C6** if additional GPIO pins are needed (30 GPIOs available)
 
 ## References
 
@@ -545,7 +545,7 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 
 This project includes comprehensive unit and integration tests for all pure Rust components (`font`, `frame_buffer`, `chain_mapper`, `bit_stream`, and `http_request`).
 
-Because the embedded ESP32 HAL dependencies are behind the optional `esp32` feature flag (`default = []`), all tests run directly on your host machine:
+Because the embedded ESP32 HAL dependencies are behind the optional `esp32` feature flag (`default = []`), all tests run directly on the host machine:
 
 ```bash
 # Run all unit and integration tests
@@ -571,7 +571,7 @@ These aliases defined in `.cargo/config.toml` invoke `cargo build --target riscv
 
 ## Continuous Integration
 
-Tests should be run before updating dependencies. Use these commands:
+Tests shall be run before updating dependencies. Execute these commands:
 
 ```bash
 # Run all host tests (font module)
@@ -584,7 +584,7 @@ cargo +esp build-esp32
 cargo +esp release-esp32
 ```
 
-All tests must pass and the embedded build must succeed before deploying to ESP32.
+All tests shall pass and the embedded build shall succeed before deploying to ESP32.
 
 ## License
 
