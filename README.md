@@ -275,7 +275,7 @@ See the [Helsinki Hacklab wiki][wiki-connector] for the orientation diagram.
 3. **Install espflash** for flashing:
 
    ```bash
-   cargo install espflash
+   cargo install espflash cargo-espflash
    ```
 
 > 🎉 **No espup needed!** ESP32-C3 uses RISC-V with standard LLVM backend. Just use stable Rust toolchain!

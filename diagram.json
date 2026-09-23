@@ -11,156 +11,16 @@
       "attrs": {}
     },
     {
-      "type": "wokwi-logic-analyzer",
-      "id": "logic1",
-      "top": -220,
-      "left": 350,
-      "attrs": {
-        "bufferSize": "100000"
-      }
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_r1",
-      "top": 50,
-      "left": 280,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_g1",
-      "top": 170,
-      "left": 280,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_b1",
-      "top": 290,
-      "left": 280,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_r2",
-      "top": 50,
-      "left": 460,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_g2",
-      "top": 170,
-      "left": 460,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-74hc595",
-      "id": "sr_b2",
-      "top": 290,
-      "left": 460,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-rgb-led",
-      "id": "rgb1",
-      "top": 150,
-      "left": 150,
-      "attrs": {
-        "common": "cathode"
-      }
-    },
-    {
-      "type": "wokwi-rgb-led",
-      "id": "rgb2",
-      "top": 250,
-      "left": 150,
-      "attrs": {
-        "common": "cathode"
-      }
-    },
-    {
       "type": "chip-matrix-88x88",
       "id": "matrix",
       "top": 0,
-      "left": 650,
+      "left": 420,
       "attrs": {}
     }
   ],
   "connections": [
     ["esp:TX", "$serialMonitor:RX", "", []],
     ["esp:RX", "$serialMonitor:TX", "", []],
-
-    ["esp:0", "logic1:D0", "blue", ["h:20", "v:-200"]],
-    ["esp:1", "logic1:D1", "cyan", ["h:25", "v:-195"]],
-    ["esp:2", "logic1:D2", "green", ["h:30", "v:-190"]],
-    ["esp:3", "logic1:D3", "yellow", ["h:35", "v:-185"]],
-    ["esp:4", "logic1:D4", "orange", ["h:40", "v:-180"]],
-    ["esp:5", "logic1:D5", "red", ["h:45", "v:-175"]],
-    ["esp:6", "logic1:D6", "purple", ["h:50", "v:-170"]],
-    ["esp:7", "logic1:D7", "magenta", ["h:55", "v:-165"]],
-    ["esp:GND.1", "logic1:GND", "black", ["h:-15", "v:-210"]],
-
-    ["esp:1", "sr_r1:SHCP", "cyan", ["h:30", "v:20"]],
-    ["esp:1", "sr_g1:SHCP", "cyan", ["h:30", "v:140"]],
-    ["esp:1", "sr_b1:SHCP", "cyan", ["h:30", "v:260"]],
-    ["esp:1", "sr_r2:SHCP", "cyan", ["h:30", "v:20"]],
-    ["esp:1", "sr_g2:SHCP", "cyan", ["h:30", "v:140"]],
-    ["esp:1", "sr_b2:SHCP", "cyan", ["h:30", "v:260"]],
-
-    ["esp:2", "sr_r1:STCP", "green", ["h:35", "v:30"]],
-    ["esp:2", "sr_g1:STCP", "green", ["h:35", "v:150"]],
-    ["esp:2", "sr_b1:STCP", "green", ["h:35", "v:270"]],
-    ["esp:2", "sr_r2:STCP", "green", ["h:35", "v:30"]],
-    ["esp:2", "sr_g2:STCP", "green", ["h:35", "v:150"]],
-    ["esp:2", "sr_b2:STCP", "green", ["h:35", "v:270"]],
-
-    ["esp:7", "sr_r1:DS", "red", ["h:60", "v:40"]],
-    ["esp:8", "sr_g1:DS", "green", ["h:60", "v:160"]],
-    ["esp:9", "sr_b1:DS", "blue", ["h:60", "v:280"]],
-    ["esp:10", "sr_r2:DS", "red", ["h:70", "v:40"]],
-    ["esp:20", "sr_g2:DS", "green", ["h:70", "v:160"]],
-    ["esp:21", "sr_b2:DS", "blue", ["h:70", "v:280"]],
-
-    ["esp:5V", "sr_r1:VCC", "red", ["h:-20", "v:60"]],
-    ["esp:5V", "sr_r1:MR", "red", ["h:-20", "v:70"]],
-    ["esp:GND.1", "sr_r1:GND", "black", ["h:-10", "v:80"]],
-    ["esp:GND.1", "sr_r1:OE", "black", ["h:-10", "v:90"]],
-
-    ["esp:5V", "sr_g1:VCC", "red", ["h:-20", "v:180"]],
-    ["esp:5V", "sr_g1:MR", "red", ["h:-20", "v:190"]],
-    ["esp:GND.1", "sr_g1:GND", "black", ["h:-10", "v:200"]],
-    ["esp:GND.1", "sr_g1:OE", "black", ["h:-10", "v:210"]],
-
-    ["esp:5V", "sr_b1:VCC", "red", ["h:-20", "v:300"]],
-    ["esp:5V", "sr_b1:MR", "red", ["h:-20", "v:310"]],
-    ["esp:GND.1", "sr_b1:GND", "black", ["h:-10", "v:320"]],
-    ["esp:GND.1", "sr_b1:OE", "black", ["h:-10", "v:330"]],
-
-    ["esp:5V", "sr_r2:VCC", "red", ["h:-20", "v:60"]],
-    ["esp:5V", "sr_r2:MR", "red", ["h:-20", "v:70"]],
-    ["esp:GND.1", "sr_r2:GND", "black", ["h:-10", "v:80"]],
-    ["esp:GND.1", "sr_r2:OE", "black", ["h:-10", "v:90"]],
-
-    ["esp:5V", "sr_g2:VCC", "red", ["h:-20", "v:180"]],
-    ["esp:5V", "sr_g2:MR", "red", ["h:-20", "v:190"]],
-    ["esp:GND.1", "sr_g2:GND", "black", ["h:-10", "v:200"]],
-    ["esp:GND.1", "sr_g2:OE", "black", ["h:-10", "v:210"]],
-
-    ["esp:5V", "sr_b2:VCC", "red", ["h:-20", "v:300"]],
-    ["esp:5V", "sr_b2:MR", "red", ["h:-20", "v:310"]],
-    ["esp:GND.1", "sr_b2:GND", "black", ["h:-10", "v:320"]],
-    ["esp:GND.1", "sr_b2:OE", "black", ["h:-10", "v:330"]],
-
-    ["sr_r1:Q0", "rgb1:R", "red", ["h:-30", "v:0"]],
-    ["sr_g1:Q0", "rgb1:G", "green", ["h:-30", "v:0"]],
-    ["sr_b1:Q0", "rgb1:B", "blue", ["h:-30", "v:0"]],
-    ["esp:GND.1", "rgb1:COM", "black", ["h:-10", "v:140"]],
-
-    ["sr_r2:Q0", "rgb2:R", "red", ["h:-40", "v:0"]],
-    ["sr_g2:Q0", "rgb2:G", "green", ["h:-40", "v:0"]],
-    ["sr_b2:Q0", "rgb2:B", "blue", ["h:-40", "v:0"]],
-    ["esp:GND.1", "rgb2:COM", "black", ["h:-10", "v:240"]],
 
     ["esp:0", "matrix:GCLK", "blue", []],
     ["esp:1", "matrix:DCLK", "cyan", []],
@@ -173,9 +33,9 @@
     ["esp:8", "matrix:DG1", "green", []],
     ["esp:9", "matrix:DB1", "blue", []],
     ["esp:10", "matrix:DR2", "red", []],
-    ["esp:20", "matrix:DG2", "green", []],
-    ["esp:21", "matrix:DB2", "blue", []],
-    ["esp:5V", "matrix:5V.1", "red", []],
+    ["esp:18", "matrix:DG2", "green", []],
+    ["esp:19", "matrix:DB2", "blue", []],
+    ["esp:5V.1", "matrix:5V.1", "red", []],
     ["esp:GND.1", "matrix:GND.1", "black", []]
   ],
   "dependencies": {}

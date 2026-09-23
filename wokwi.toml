@@ -4,6 +4,10 @@ firmware = "target/riscv32imc-unknown-none-elf/release/esp32-led-matrix"
 elf = "target/riscv32imc-unknown-none-elf/release/esp32-led-matrix"
 gdbServerPort = 3333
 
+[[chip]]
+name = "matrix-88x88"
+binary = "chips/matrix-88x88.chip.wasm"
+
 # Automatically export logic analyzer captures to VCD when simulation stops
 # Can be opened with Surfer, PulseView, or GTKWave
 vcdFile = "signals.vcd"
