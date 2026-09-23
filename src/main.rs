@@ -73,8 +73,10 @@ async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     info!("=== ESP32 LED Matrix Controller ===");
     info!("Pure Rust build with esp-hal");
+    info!("Matrix power: provide regulated external 5 V; GPIOs carry signals only");
 
-    // Initialize LED matrix GPIO pins.
+    // Initialize LED matrix GPIO pins. The matrix power pins must be connected
+    // directly to a regulated external 5 V supply, not powered through the ESP32.
     //
     // Pin map matches the wiring diagram in README.md — the user wires the
     // LED matrix signals to these specific ESP32-C3 GPIOs. GPIO8/GPIO9 are

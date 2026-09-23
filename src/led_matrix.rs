@@ -5,6 +5,10 @@
 //!
 //! [wiki]: https://wiki.helsinki.hacklab.fi/Ledimatriisin_ohjaaminen
 //!
+//! The matrix power pins are not controlled by this driver. They must be wired
+//! directly to a regulated external 5 V supply, with the supply ground tied to
+//! the ESP32 ground. The ESP32 GPIOs below carry logic signals only.
+//!
 //! ## Control Signals
 //! - GCLK: Multiplex clock (~1 MHz, 256 pulses per scanline, plus a 257th
 //!   pulse with longer high/low "dead time" before the next scanline)
@@ -312,7 +316,8 @@ impl LedMatrix {
     fn init(&mut self) {
         self.set_all_pins_low();
 
-        // Wait for power stabilization.
+        // The external matrix supply must already be stable before GPIO
+        // initialization reaches the panel.
         Delay::new().delay_millis(100);
 
         self.send_config(CONFIG_REGISTER_1);

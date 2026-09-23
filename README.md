@@ -24,7 +24,7 @@ flowchart TD
         StatusInd["💡 Status Indicator Task (Wi-Fi / DHCP State)"] -->|"Overlay Pixel (x=87, y=0)"| FrameBuffer
 
         HTTPServer -->|"Update Text, Position, Color & Brightness"| FrameBuffer["🖼️ FrameBuffer (88×88 RGB) + Brightness State"]
-        
+
         FrameBuffer -->|"Pixel RGB & Scaling"| ChainMapper["⚡ Chain Mapper & Bit Stream (6 Parallel Chains: R1,G1,B1, R2,G2,B2)"]
 
         ChainMapper -->|"GPIO Bit-Banging (13 Control Pins)"| Driver["🎛️ LED Matrix Driver (Scanline Address A0-A3, DCLK, LE, GCLK)"]
@@ -157,8 +157,9 @@ The LED matrix requires 13 control signals:
    │ GPIO20├────────┼────┤ DG2 (Pin 17)  (UART RXD)    │ │
    │ GPIO21├────────┼────┤ DB2 (Pin 34)  (UART TXD)    │ │
    │  GND  ├────────┼────┤ GND (Pins 1-2, 18-19)       │ │
-   │  5V** ├────────┼────┤ +5V (Pins 3-8, 20-25)       │ │
+   │  5V** ├──┐     ├────┤ +5V (Pins 3-8, 20-25)       │ │
    └───────┘        │    └─────────────────────────────┘ │
+                    │    (direct branch from external 5V) │
                     │  **Use external 5V supply for matrix│
                     │  IMPORTANT: Verify pinout with wiki!│
                     └─────────────────────────────────────┘
@@ -191,6 +192,42 @@ The LED matrix requires 13 control signals:
 > **Note:** ESP32-C3 SuperMini exposes GPIO 0-10 and GPIO 20-21 (13 pins). This uses ALL available GPIOs! GPIO8/9 are boot pins but work with matrix pull-ups. GPIO20/21 are UART pins - serial logging may interfere with display.
 
 > ⚠️ **Power Warning**: Do NOT power the LED matrix from USB 5V! The matrix can draw up to 10A. Use an external 5V power supply rated for at least 10A. Connect ESP32-C3 GND to matrix GND.
+
+### Power and Signal Wiring
+
+The matrix power path shall bypass the ESP32 board. The ESP32 GPIO pins are
+logic outputs only; they do not supply LED current and no relay is needed for
+individual LEDs. The matrix driver ICs provide the LED current control and PWM
+brightness control.
+
+Use one of these arrangements:
+
+- **Separate supplies:** power the ESP32 from USB or its own regulator, and
+  power the matrix directly from a regulated 5 V supply rated for at least
+  10 A.
+- **One shared supply:** use a regulated 5 V supply with enough total current,
+  connect one branch directly to the matrix's 12 +5 V pins, and connect a
+  separate branch to the ESP32 board's 5 V/VIN input only if that board accepts
+  regulated 5 V there. The matrix must still not be powered through the ESP32
+  board or its USB connector.
+
+In both arrangements:
+
+1. Connect all twelve matrix +5 V pins directly to the supply through suitable
+   wiring and power distribution.
+2. Connect all four matrix GND pins to the supply negative terminal.
+3. Connect ESP32 GND to the same supply negative terminal. This common ground
+   is required for the GPIO signal levels to be interpreted correctly.
+4. Put an appropriately sized fuse close to the supply, use wire and
+   connectors rated for the expected current, and add bulk capacitance near
+   the matrix power input.
+5. Check the matrix input thresholds. If 3.3 V GPIO signals are not reliably
+   recognized, place a suitable 3.3 V-to-5 V logic buffer on the control lines;
+   never connect 5 V to an ESP32 GPIO.
+
+Brightness is controlled by the ESP32 through the matrix protocol: the driver
+scales the 16-bit PWM data before shifting it to the panel. It is not necessary
+or appropriate to switch the matrix supply with relays to dim individual LEDs.
 
 ### 34-Pin Connector Pinout
 
@@ -435,6 +472,15 @@ This project includes a complete [Wokwi](https://wokwi.com/) simulation configur
 - **Driver Shift Registers** (`wokwi-74hc595`): 6 parallel shift registers representing the driver IC chains (R1, G1, B1, R2, G2, B2), clocked by DCLK and latched by LE.
 - **RGB Activity Indicators** (`wokwi-rgb-led`): Display live output from the shift register chains.
 - **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi chip implementing the 34-pin connector and an $88 \times 88$ RGBA framebuffer.
+- **5 V DC Power Supply** (`wokwi-dc-power-supply`): Feeds the ESP32 5 V pin
+  and every matrix +5 V pin directly; the supply ground is shared by the ESP32
+  and all matrix GND pins.
+
+The Wokwi power supply represents the external regulated supply used by the
+hardware. It is shown with separate branches so the matrix is not powered
+through the ESP32 board. Wokwi does not simulate the panel's real 10 A load, so
+the diagram documents the topology rather than validating the real supply
+size.
 
 ### Running in VS Code
 
