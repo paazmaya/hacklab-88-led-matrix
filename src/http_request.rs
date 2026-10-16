@@ -468,8 +468,8 @@ mod tests {
         assert_eq!(cmd.text.as_str(), "test");
         assert_eq!(cmd.x, Some(10));
         assert_eq!(cmd.y, Some(20));
-        assert_eq!(cmd.color, [0xFF * 257, 0x80 * 257, 0x00 * 257]);
-        assert_eq!(cmd.clear, false);
+        assert_eq!(cmd.color, [0xFF * 257, 0x80 * 257, 0]);
+        assert!(!cmd.clear);
     }
 
     #[test]
@@ -480,7 +480,7 @@ mod tests {
         assert_eq!(cmd.x, None);
         assert_eq!(cmd.y, None);
         assert_eq!(cmd.color, [0xFFFF, 0xFFFF, 0xFFFF]);
-        assert_eq!(cmd.clear, true);
+        assert!(cmd.clear);
     }
 
     #[test]
@@ -523,7 +523,7 @@ mod tests {
         let req = "GET /text?msg=ok&foo=bar&clear=true&unknown=123 HTTP/1.1";
         let cmd = extract_display_command(req).unwrap();
         assert_eq!(cmd.text.as_str(), "ok");
-        assert_eq!(cmd.clear, true);
+        assert!(cmd.clear);
     }
 
     #[test]
@@ -594,5 +594,16 @@ mod tests {
         assert_eq!(cmd.brightness, Some(50));
         assert!(!cmd.clear);
         assert_eq!(cmd.text.as_str(), "");
+    }
+
+    #[test]
+    fn extract_brightness_command_without_query_is_none() {
+        assert!(extract_brightness_command("GET /brightness HTTP/1.1").is_none());
+    }
+
+    #[test]
+    fn extract_brightness_command_skips_empty_params() {
+        let cmd = extract_brightness_command("GET /brightness?&&val=200& HTTP/1.1").unwrap();
+        assert_eq!(cmd.brightness, Some(100));
     }
 }

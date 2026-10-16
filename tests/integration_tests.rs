@@ -23,8 +23,8 @@ use esp32_led_matrix::{MATRIX_HEIGHT, MATRIX_WIDTH};
 fn public_constants_hold_invariants() {
     assert_eq!(MATRIX_WIDTH, 88);
     assert_eq!(MATRIX_HEIGHT, 88);
-    assert!(MATRIX_WIDTH > 0 && MATRIX_HEIGHT > 0);
-    assert!(SCANLINES > 0 && LEDS_PER_IC > 0 && ICS_PER_CHAIN > 0);
+    const { assert!(MATRIX_WIDTH > 0 && MATRIX_HEIGHT > 0) };
+    const { assert!(SCANLINES > 0 && LEDS_PER_IC > 0 && ICS_PER_CHAIN > 0) };
     assert_eq!(CHAIN_LEN, 44);
     // CHAIN_LEN must equal 2 * ICS_PER_CHAIN because each chain holds two
     // pixel groups per cycle (top/bottom row groups).
@@ -300,7 +300,7 @@ fn http_query_with_coordinates_color_and_overlay() {
     assert_eq!(cmd.x, Some(10));
     assert_eq!(cmd.y, Some(20));
     assert_eq!(cmd.color, [0x0000, 0xFFFF, 0x80 * 257]);
-    assert_eq!(cmd.clear, false);
+    assert!(!cmd.clear);
 
     // Apply command to frame buffer
     let mut fb = FrameBuffer::new();
@@ -394,7 +394,7 @@ fn http_brightness_command_scales_chain_data_output() {
     let resp = dispatch(req);
     let cmd = resp.command.expect("brightness command expected");
     assert_eq!(cmd.brightness, Some(50));
-    assert_eq!(cmd.clear, false);
+    assert!(!cmd.clear);
 
     // 2. Render text into frame buffer
     let mut fb = FrameBuffer::new();
