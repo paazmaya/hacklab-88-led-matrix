@@ -467,20 +467,11 @@ This project includes a complete [Wokwi](https://wokwi.com/) simulation configur
 
 ### Simulated Components
 
-- **ESP32-C3 DevKit** (`board-esp32-c3-devkitm-1`): RISC-V microcontroller running the exact embedded firmware with serial monitor connected to TX/RX.
-- **8-Channel Digital Logic Analyzer** (`wokwi-logic-analyzer`): Monitors the 7 control pins (GCLK on D0, DCLK on D1, LE on D2, A0–A3 on D3–D6) and red data chain 1 (DR1 on D7). Signal waveforms are automatically saved to `signals.vcd` upon stopping the simulation (can be opened in VS Code using Surfer or WaveTrace).
-- **Driver Shift Registers** (`wokwi-74hc595`): 6 parallel shift registers representing the driver IC chains (R1, G1, B1, R2, G2, B2), clocked by DCLK and latched by LE.
-- **RGB Activity Indicators** (`wokwi-rgb-led`): Display live output from the shift register chains.
-- **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi chip implementing the 34-pin connector and an $88 \times 88$ RGBA framebuffer.
-- **5 V DC Power Supply** (`wokwi-dc-power-supply`): Feeds the ESP32 5 V pin
-  and every matrix +5 V pin directly; the supply ground is shared by the ESP32
-  and all matrix GND pins.
+- **ESP32-C3 DevKit** (`board-esp32-c3-devkitm-1`): RISC-V microcontroller running the exact embedded firmware with serial monitor connected to TX/RX and all 13 control pins (`GPIO0–GPIO10`, `GPIO20–GPIO21`) wired to the matrix chip.
+- **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi WebAssembly chip implementing the 34-pin connector, 22-IC × 16-bit PWM shift-register chains, Data Latch (`LE` + 1 `DCLK`), VSYNC (`LE` + 2 `DCLK`), and an $88 \times 88$ RGBA framebuffer.
+- **VCD Waveform Export**: Configured in `wokwi.toml` (`vcdFile = "signals.vcd"`) so captured digital waveforms can be inspected in VS Code using Surfer, PulseView, or GTKWave.
 
-The Wokwi power supply represents the external regulated supply used by the
-hardware. It is shown with separate branches so the matrix is not powered
-through the ESP32 board. Wokwi does not simulate the panel's real 10 A load, so
-the diagram documents the topology rather than validating the real supply
-size.
+> 🛠️ **Rebuilding the Wokwi custom chip:** After editing `chips/matrix-88x88.chip.c`, run `make -C chips` (requires Docker with `wokwi/builder-clang-wasm`) to recompile `chips/matrix-88x88.chip.wasm`.
 
 ### Running in VS Code
 
@@ -531,21 +522,31 @@ esp32-led-matrix/
 
 This project uses **pure Rust** crates (no ESP-IDF!):
 
-| Crate              | Purpose                       |
-| ------------------ | ----------------------------- |
-| `esp-hal`          | Hardware abstraction layer    |
-| `esp-hal-embassy`  | Embassy async runtime support |
-| `esp-wifi`         | WiFi driver                   |
-| `embassy-executor` | Async task executor           |
-| `embassy-net`      | TCP/IP networking             |
-| `smoltcp`          | Network stack                 |
-| `esp-backtrace`    | Panic handling                |
+| Crate              | Purpose                                     |
+| ------------------ | ------------------------------------------- |
+| `esp-hal`          | Hardware abstraction layer (`1.0.0`)        |
+| `esp-rtos`         | RTOS scheduler & Embassy timer integration  |
+| `esp-radio`        | Pure-Rust Wi-Fi radio driver (`0.17.0`)     |
+| `embassy-executor` | Cooperative async task executor             |
+| `embassy-net`      | Async TCP/IP & DHCPv4 networking            |
+| `embassy-sync`     | Cross-task synchronization primitives       |
+| `smoltcp`          | Embedded TCP/IP protocol stack              |
+| `esp-backtrace`    | Panic backtrace handler                     |
+| `esp-println`      | Serial logger output                        |
+| `heapless`         | Fixed-capacity `no_std` strings and buffers |
 
 **Toolchain:**
 
 - Uses **stable Rust** (not custom ESP fork)
 - Target: `riscv32imc-unknown-none-elf` (standard RISC-V)
 - No Xtensa linker issues - RISC-V has excellent LLVM support!
+
+## Security & Operational Safety
+
+- **Network Scope**: The embedded HTTP server listens on plain HTTP (port 80) without authentication so anyone on the local Hacklab / home Wi-Fi can update the sign. Deploy only on a trusted local LAN or isolated IoT VLAN — **never** port-forward port 80 to the public internet.
+- **Socket Timeout Protection**: Incoming TCP connections enforce a 5-second I/O timeout (`SOCKET_TIMEOUT` in `src/http_server.rs`) and fixed 512-byte request buffers (`heapless::String<32>` message cap) so idle or half-open connections cannot wedge the single-listener HTTP task or exhaust SRAM.
+- **Credential Hygiene**: Pass `WIFI_SSID` and `WIFI_PASSWORD` via environment variables at build time (`WIFI_SSID="..." WIFI_PASSWORD="..." cargo release-esp32`) rather than committing real credentials to `src/main.rs`.
+- **Electrical & Thermal Safety**: At 100% full white, the panel can draw up to **10 A at 5 V (50 W)**. Always fuse the external 5 V supply, wire all 12 `+5V` and 4 `GND` connector pins, and never power the panel through the ESP32-C3 USB port.
 
 ## Troubleshooting
 
@@ -642,17 +643,7 @@ The SuperMini is _extremely_ compact but uses **all 13 available GPIOs**:
 - **GPIO8/9** are boot strapping pins - matrix pull-ups keep them HIGH ✓
 - **GPIO20/21** are UART - serial logging may interfere with DG2/DB2 data
 - Consider **ESP32-C6** if additional GPIO pins are needed (30 GPIOs available)
-
-## References
-
-- [Helsinki Hacklab LED Matrix Documentation](https://wiki.helsinki.hacklab.fi/Ledimatriisin_ohjaaminen)
-- [Pacman Project](https://wiki.helsinki.hacklab.fi/Pacman_ja_ledimatriisi)
-- [esp-hal Documentation](https://docs.esp-rs.org/esp-hal/)
-- [esp-rs Community](https://github.com/esp-rs)
-
-## Running Tests
-
-This project includes comprehensive unit and integration tests for all pure Rust components (`font`, `frame_buffer`, `chain_mapper`, `bit_stream`, and `http_request`).
+  `http_request`, and `status_indicator`).
 
 Because the embedded ESP32 HAL dependencies are behind the optional `esp32` feature flag (`default = []`), all tests run directly on the host machine:
 
@@ -678,7 +669,33 @@ cargo release-esp32      # optimised release build
 
 These aliases defined in `.cargo/config.toml` invoke `cargo build --target riscv32imc-unknown-none-elf --features esp32`. The `.cargo/config.toml` also configures `runner = "espflash flash --monitor"` so `cargo run --release` automatically flashes the connected board.
 
+## Contributing & Architecture Guide
+
+The codebase is split into two layers so contributors can develop and test without physical ESP32 hardware:
+
+1. **Host-Testable Core Library (`src/lib.rs`)**:
+   - `#![no_std]` with zero hardware dependencies (`default = []` features).
+   - Enforces `#![deny(missing_docs)]` so all public structs, enums, functions, and constants are documented.
+   - Data flows cleanly through `http_request::dispatch` → `frame_buffer::FrameBuffer` (+ `status_indicator::StatusIndicator` & `font::Font`) → `chain_mapper::compute_chain_data_with_brightness` → `bit_stream::chain_data_bits`.
+2. **ESP32-C3 Hardware Binary (`src/main.rs`, enabled via `--features esp32`)**:
+   - `led_matrix.rs`: Owns the 13 GPIO outputs, configuration register initialization, and GCLK/DCLK bit-banging.
+   - `wifi.rs`: Manages `esp-radio` station association, reconnection, and DHCP lease state.
+   - `http_server.rs`: Runs an async `embassy-net` TCP server on port 80 and publishes parsed `DisplayCommand` updates via `DISPLAY_COMMAND`.
+
 ## Continuous Integration
+
+Run formatting, lints, host tests, and the embedded target check before opening a pull request or updating dependencies:
+
+````bash
+# 1. Check formatting and host clippy lints
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+
+# 2. Run all host unit and integration tests
+cargo test
+
+# 3. Verify the embedded RISC-V target compiles cleanly with zero warnings
+cargo clippy --target riscv32imc-unknown-none-elf --features esp32 -- -D warningsation
 
 Tests shall be run before updating dependencies. Execute these commands:
 
@@ -691,7 +708,7 @@ cargo test --no-default-features --target aarch64-apple-darwin
 # Build for embedded
 cargo build-esp32
 cargo release-esp32
-```
+````
 
 All tests shall pass and the embedded build shall succeed before deploying to ESP32.
 

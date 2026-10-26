@@ -33,8 +33,8 @@
     ["esp:8", "matrix:DG1", "green", []],
     ["esp:9", "matrix:DB1", "blue", []],
     ["esp:10", "matrix:DR2", "red", []],
-    ["esp:18", "matrix:DG2", "green", []],
-    ["esp:19", "matrix:DB2", "blue", []],
+    ["esp:20", "matrix:DG2", "green", []],
+    ["esp:21", "matrix:DB2", "blue", []],
     ["esp:5V.1", "matrix:5V.1", "red", []],
     ["esp:GND.1", "matrix:GND.1", "black", []]
   ],

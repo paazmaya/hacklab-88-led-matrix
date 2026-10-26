@@ -132,30 +132,42 @@ pub fn html_page() -> &'static [u8] {
     HTML_PAGE.as_bytes()
 }
 
+/// Check whether the request starts with `prefix` followed by a valid URI
+/// boundary (`'?'`, `' '`, `'\r'`, `'\n'`, or end-of-input).
+fn matches_route(request: &str, prefix: &str) -> bool {
+    match request.strip_prefix(prefix) {
+        Some("") => true,
+        Some(rest) => rest.starts_with(['?', ' ', '\r', '\n']),
+        None => false,
+    }
+}
+
 /// True for `GET /` or `GET / HTTP/1.x` (root page).
 fn is_root_request(request: &str) -> bool {
-    request.starts_with("GET / ") || request.starts_with("GET / HTTP")
+    request == "GET /" || request.starts_with("GET / ") || request.starts_with("GET / HTTP")
 }
 
 /// True for `GET /clear`.
 fn is_clear_request(request: &str) -> bool {
-    request.contains("GET /clear")
+    matches_route(request, "GET /clear")
 }
 
 /// True for `GET /brightness`.
 fn is_brightness_request(request: &str) -> bool {
-    request.contains("GET /brightness")
+    matches_route(request, "GET /brightness")
 }
 
-/// True for `GET /text?` or `GET /text `.
+/// True for `GET /text` (with or without query parameters).
 fn is_text_update_request(request: &str) -> bool {
-    request.contains("GET /text?") || request.contains("GET /text ")
+    matches_route(request, "GET /text")
 }
 
 /// Extract a brightness update command from a `/brightness` request.
 pub fn extract_brightness_command(request: &str) -> Option<DisplayCommand> {
-    let start = request.find("GET /brightness")?;
-    let after_path = &request[start + "GET /brightness".len()..];
+    if !is_brightness_request(request) {
+        return None;
+    }
+    let after_path = &request["GET /brightness".len()..];
     let query = if let Some(q) = after_path.strip_prefix('?') {
         let end = q.find([' ', '\r', '\n']).unwrap_or(q.len());
         &q[..end]
@@ -216,8 +228,10 @@ pub fn parse_hex_color(val: &str) -> Option<[u16; 3]> {
 
 /// Extract a structured [`DisplayCommand`] from an HTTP request.
 pub fn extract_display_command(request: &str) -> Option<DisplayCommand> {
-    let start = request.find("GET /text")?;
-    let after_path = &request[start + "GET /text".len()..];
+    if !is_text_update_request(request) {
+        return None;
+    }
+    let after_path = &request["GET /text".len()..];
     if !after_path.starts_with('?') {
         return Some(DisplayCommand::default());
     }
@@ -605,5 +619,45 @@ mod tests {
     fn extract_brightness_command_skips_empty_params() {
         let cmd = extract_brightness_command("GET /brightness?&&val=200& HTTP/1.1").unwrap();
         assert_eq!(cmd.brightness, Some(100));
+    }
+
+    #[test]
+    fn route_matching_rejects_false_prefix_and_wrong_method() {
+        assert_eq!(dispatch(b"GET /clearer HTTP/1.1").body, NOT_FOUND_RESPONSE);
+        assert_eq!(dispatch(b"GET /textbook HTTP/1.1").body, NOT_FOUND_RESPONSE);
+        assert_eq!(
+            dispatch(b"GET /brightness_extra?val=50 HTTP/1.1").body,
+            NOT_FOUND_RESPONSE
+        );
+        assert_eq!(
+            dispatch(b"POST /text?msg=hi HTTP/1.1").body,
+            NOT_FOUND_RESPONSE
+        );
+        assert!(extract_display_command("GET /textbook?msg=hi HTTP/1.1").is_none());
+        assert!(extract_brightness_command("GET /brightness2?val=50 HTTP/1.1").is_none());
+        assert!(is_root_request("GET /"));
+        assert!(is_text_update_request("GET /text"));
+    }
+
+    #[test]
+    fn web_form_checkbox_checked_and_unchecked_behavior() {
+        // When checkbox is checked in http_page.html, browser sends hidden clear=0 then checkbox clear=1
+        let checked_req =
+            "GET /text?msg=hi&x=&y=&color=%23ffffff&brightness=50&clear=0&clear=1 HTTP/1.1";
+        let cmd_checked = extract_display_command(checked_req).unwrap();
+        assert!(
+            cmd_checked.clear,
+            "checked form submission should clear screen"
+        );
+        assert_eq!(cmd_checked.x, None);
+        assert_eq!(cmd_checked.y, None);
+
+        // When checkbox is unchecked in http_page.html, browser sends only hidden clear=0
+        let unchecked_req = "GET /text?msg=hi&x=&y=&color=%23ffffff&brightness=50&clear=0 HTTP/1.1";
+        let cmd_unchecked = extract_display_command(unchecked_req).unwrap();
+        assert!(
+            !cmd_unchecked.clear,
+            "unchecked form submission must not clear screen"
+        );
     }
 }

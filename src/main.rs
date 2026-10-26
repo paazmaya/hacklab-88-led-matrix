@@ -19,9 +19,12 @@
 
 #![no_std]
 #![no_main]
+#![cfg(not(tarpaulin_include))]
 
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use esp32_led_matrix::font::FONT_HEIGHT;
+pub use esp32_led_matrix::{MATRIX_HEIGHT, MATRIX_WIDTH};
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Level, Output, OutputConfig};
@@ -32,11 +35,6 @@ mod led_matrix;
 mod wifi;
 
 use crate::led_matrix::LedMatrix;
-
-/// Horizontal resolution of the LED matrix in pixels.
-pub const MATRIX_WIDTH: usize = 88;
-/// Vertical resolution of the LED matrix in pixels.
-pub const MATRIX_HEIGHT: usize = 88;
 
 /// WiFi credentials - can be configured via environment variables at compile time
 /// (e.g. `WIFI_SSID="MyRouter" WIFI_PASSWORD="secret" cargo release-esp32`)
@@ -145,7 +143,7 @@ async fn main(spawner: Spawner) {
                 }
                 if !cmd.text.is_empty() {
                     let start_x = cmd.x.unwrap_or(4);
-                    let start_y = cmd.y.unwrap_or(((MATRIX_HEIGHT - 7) / 2) as i32);
+                    let start_y = cmd.y.unwrap_or(((MATRIX_HEIGHT - FONT_HEIGHT) / 2) as i32);
                     led_matrix.draw_text_at(
                         &cmd.text,
                         start_x,

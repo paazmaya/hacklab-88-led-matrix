@@ -53,6 +53,9 @@ pub fn scale_pixel(pixel: Pixel, brightness: u8) -> Pixel {
 /// Translate the 88x88 frame buffer into the 44-pixel ordering the chain
 /// hardware expects for one `(scanline, led)` cycle, scaling each pixel
 /// by the given `brightness` percentage (0..=100).
+///
+/// If `scanline >= SCANLINES` (11) or `led >= LEDS_PER_IC` (16), `data` is
+/// zero-filled and the function returns without indexing `pixels`.
 pub fn compute_chain_data_with_brightness(
     scanline: usize,
     led: usize,
@@ -60,6 +63,11 @@ pub fn compute_chain_data_with_brightness(
     brightness: u8,
     data: &mut [[u16; 3]; CHAIN_LEN],
 ) {
+    if scanline >= SCANLINES || led >= LEDS_PER_IC {
+        data.fill([0, 0, 0]);
+        return;
+    }
+
     // led 0..7 picks one row-group of the scanline; led 8..15 picks the
     // other. ledColumn is the per-group column offset, reversed for the
     // first group to match the physical wiring.
@@ -252,5 +260,53 @@ mod tests {
         for entry in data.iter() {
             assert_eq!(*entry, [200, 400, 600]);
         }
+    }
+
+    #[test]
+    fn out_of_bounds_scanline_or_led_zero_fills_safely() {
+        let px = uniform_pixels(100, 200, 300);
+        let mut data = [[999u16; 3]; CHAIN_LEN];
+        compute_chain_data_with_brightness(SCANLINES, 0, &px, 100, &mut data);
+        assert!(data.iter().all(|&p| p == [0, 0, 0]));
+
+        let mut data = [[999u16; 3]; CHAIN_LEN];
+        compute_chain_data_with_brightness(0, LEDS_PER_IC, &px, 100, &mut data);
+        assert!(data.iter().all(|&p| p == [0, 0, 0]));
+    }
+
+    #[test]
+    fn full_frame_mapping_is_bijective_over_all_7744_pixels() {
+        // Assign a unique 1-based ID to each (row, col) in the 88x88 matrix
+        let mut px = [[[0u16; 3]; 88]; 88];
+        for (row_idx, row) in px.iter_mut().enumerate() {
+            for (col_idx, cell) in row.iter_mut().enumerate() {
+                let id = (row_idx * 88 + col_idx + 1) as u16;
+                *cell = [id, row_idx as u16, col_idx as u16];
+            }
+        }
+
+        let frame = compute_full_frame(&px);
+        let mut seen = [false; 88 * 88];
+
+        for cycle in frame.iter() {
+            for slot in cycle.iter() {
+                let id = slot[0] as usize;
+                assert!(
+                    (1..=88 * 88).contains(&id),
+                    "Every chain slot must come from a valid matrix pixel"
+                );
+                assert!(
+                    !seen[id - 1],
+                    "Pixel ID {} was mapped more than once (collision)",
+                    id
+                );
+                seen[id - 1] = true;
+            }
+        }
+
+        assert!(
+            seen.iter().all(|&v| v),
+            "Every one of the 7744 matrix pixels must appear in the full frame"
+        );
     }
 }

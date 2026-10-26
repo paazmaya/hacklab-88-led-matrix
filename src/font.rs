@@ -8,9 +8,10 @@
 //! makes adding or auditing glyphs easier: every printable ASCII code
 //! appears exactly once in the table.
 
-/// Font dimensions
-const FONT_WIDTH: usize = 5;
-const FONT_HEIGHT: usize = 7;
+/// Font width in pixels.
+pub const FONT_WIDTH: usize = 5;
+/// Font height in pixels.
+pub const FONT_HEIGHT: usize = 7;
 
 /// A single character glyph (5x7 bitmap)
 pub type Glyph = [[u8; FONT_WIDTH]; FONT_HEIGHT];
@@ -22,6 +23,7 @@ const ASCII_OFFSET: usize = 32;
 const ASCII_COUNT: usize = 95;
 
 /// Font struct containing character glyphs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Font {
     // The actual glyph data lives in [`GLYPH_TABLE`] below — this struct
     // is a thin wrapper that lets the rest of the code talk to fonts via
@@ -41,18 +43,11 @@ impl Font {
     }
 
     /// Get a glyph for a character, returns `None` if no glyph is defined
-    /// for it. Lowercase letters fall back to their uppercase glyph.
+    /// for it (i.e. outside printable ASCII `32..=126`). Lowercase ASCII
+    /// letters resolve to their uppercase glyph.
     pub fn get_glyph(&self, ch: char) -> Option<&'static Glyph> {
-        let code = ch as u32;
-
-        // Map lowercase to uppercase, then recurse.
-        if (code as u8).is_ascii_lowercase() {
-            return self.get_glyph((code - 32) as u8 as char);
-        }
-
-        let idx = (code as usize).checked_sub(ASCII_OFFSET)?;
-        let slot = GLYPH_TABLE.get(idx)?;
-        *slot
+        let idx = (ch as usize).checked_sub(ASCII_OFFSET)?;
+        GLYPH_TABLE.get(idx).copied()
     }
 
     /// Get font width in pixels
@@ -67,103 +62,103 @@ impl Font {
 }
 
 /// Lookup table: index = (ascii_code - ASCII_OFFSET).
-/// Entries are in ascending ASCII order so the mapping is auditable.
-const GLYPH_TABLE: [Option<&'static Glyph>; ASCII_COUNT] = [
-    Some(&SPACE),       //  32 (0x20) ' '
-    Some(&EXCLAMATION), //  33 (0x21) '!'
-    Some(&QUOTE),       //  34 (0x22) '"'
-    Some(&HASH),        //  35 (0x23) '#'
-    Some(&DOLLAR),      //  36 (0x24) '$'
-    Some(&PERCENT),     //  37 (0x25) '%'
-    Some(&AMPERSAND),   //  38 (0x26) '&'
-    Some(&APOSTROPHE),  //  39 (0x27) "'"
-    Some(&LPAREN),      //  40 (0x28) '('
-    Some(&RPAREN),      //  41 (0x29) ')'
-    Some(&ASTERISK),    //  42 (0x2a) '*'
-    Some(&PLUS),        //  43 (0x2b) '+'
-    Some(&COMMA),       //  44 (0x2c) ','
-    Some(&MINUS),       //  45 (0x2d) '-'
-    Some(&PERIOD),      //  46 (0x2e) '.'
-    Some(&SLASH),       //  47 (0x2f) '/'
-    Some(&DIGIT_0),     //  48 (0x30) '0'
-    Some(&DIGIT_1),     //  49 (0x31) '1'
-    Some(&DIGIT_2),     //  50 (0x32) '2'
-    Some(&DIGIT_3),     //  51 (0x33) '3'
-    Some(&DIGIT_4),     //  52 (0x34) '4'
-    Some(&DIGIT_5),     //  53 (0x35) '5'
-    Some(&DIGIT_6),     //  54 (0x36) '6'
-    Some(&DIGIT_7),     //  55 (0x37) '7'
-    Some(&DIGIT_8),     //  56 (0x38) '8'
-    Some(&DIGIT_9),     //  57 (0x39) '9'
-    Some(&COLON),       //  58 (0x3a) ':'
-    Some(&SEMICOLON),   //  59 (0x3b) ';'
-    Some(&LESS),        //  60 (0x3c) '<'
-    Some(&EQUALS),      //  61 (0x3d) '='
-    Some(&GREATER),     //  62 (0x3e) '>'
-    Some(&QUESTION),    //  63 (0x3f) '?'
-    Some(&AT),          //  64 (0x40) '@'
-    Some(&UPPER_A),     //  65 (0x41) 'A'
-    Some(&UPPER_B),     //  66 (0x42) 'B'
-    Some(&UPPER_C),     //  67 (0x43) 'C'
-    Some(&UPPER_D),     //  68 (0x44) 'D'
-    Some(&UPPER_E),     //  69 (0x45) 'E'
-    Some(&UPPER_F),     //  70 (0x46) 'F'
-    Some(&UPPER_G),     //  71 (0x47) 'G'
-    Some(&UPPER_H),     //  72 (0x48) 'H'
-    Some(&UPPER_I),     //  73 (0x49) 'I'
-    Some(&UPPER_J),     //  74 (0x4a) 'J'
-    Some(&UPPER_K),     //  75 (0x4b) 'K'
-    Some(&UPPER_L),     //  76 (0x4c) 'L'
-    Some(&UPPER_M),     //  77 (0x4d) 'M'
-    Some(&UPPER_N),     //  78 (0x4e) 'N'
-    Some(&UPPER_O),     //  79 (0x4f) 'O'
-    Some(&UPPER_P),     //  80 (0x50) 'P'
-    Some(&UPPER_Q),     //  81 (0x51) 'Q'
-    Some(&UPPER_R),     //  82 (0x52) 'R'
-    Some(&UPPER_S),     //  83 (0x53) 'S'
-    Some(&UPPER_T),     //  84 (0x54) 'T'
-    Some(&UPPER_U),     //  85 (0x55) 'U'
-    Some(&UPPER_V),     //  86 (0x56) 'V'
-    Some(&UPPER_W),     //  87 (0x57) 'W'
-    Some(&UPPER_X),     //  88 (0x58) 'X'
-    Some(&UPPER_Y),     //  89 (0x59) 'Y'
-    Some(&UPPER_Z),     //  90 (0x5a) 'Z'
-    None,               //  91 (0x5b) '[' (no glyph)
-    Some(&BACKSLASH),   //  92 (0x5c) '\\'
-    None,               //  93 (0x5d) ']' (no glyph)
-    None,               //  94 (0x5e) '^' (no glyph)
-    None,               //  95 (0x5f) '_' (no glyph)
-    None,               //  96 (0x60) '`' (no glyph)
-    None,               //  97 (0x61) 'a' (no glyph)
-    None,               //  98 (0x62) 'b' (no glyph)
-    None,               //  99 (0x63) 'c' (no glyph)
-    None,               // 100 (0x64) 'd' (no glyph)
-    None,               // 101 (0x65) 'e' (no glyph)
-    None,               // 102 (0x66) 'f' (no glyph)
-    None,               // 103 (0x67) 'g' (no glyph)
-    None,               // 104 (0x68) 'h' (no glyph)
-    None,               // 105 (0x69) 'i' (no glyph)
-    None,               // 106 (0x6a) 'j' (no glyph)
-    None,               // 107 (0x6b) 'k' (no glyph)
-    None,               // 108 (0x6c) 'l' (no glyph)
-    None,               // 109 (0x6d) 'm' (no glyph)
-    None,               // 110 (0x6e) 'n' (no glyph)
-    None,               // 111 (0x6f) 'o' (no glyph)
-    None,               // 112 (0x70) 'p' (no glyph)
-    None,               // 113 (0x71) 'q' (no glyph)
-    None,               // 114 (0x72) 'r' (no glyph)
-    None,               // 115 (0x73) 's' (no glyph)
-    None,               // 116 (0x74) 't' (no glyph)
-    None,               // 117 (0x75) 'u' (no glyph)
-    None,               // 118 (0x76) 'v' (no glyph)
-    None,               // 119 (0x77) 'w' (no glyph)
-    None,               // 120 (0x78) 'x' (no glyph)
-    None,               // 121 (0x79) 'y' (no glyph)
-    None,               // 122 (0x7a) 'z' (no glyph)
-    None,               // 123 (0x7b) '{' (no glyph)
-    None,               // 124 (0x7c) '|' (no glyph)
-    None,               // 125 (0x7d) '}' (no glyph)
-    None,               // 126 (0x7e) '~' (no glyph)
+/// Entries are in ascending ASCII order (32..=126) so the mapping is auditable.
+const GLYPH_TABLE: [&Glyph; ASCII_COUNT] = [
+    &SPACE,       //  32 (0x20) ' '
+    &EXCLAMATION, //  33 (0x21) '!'
+    &QUOTE,       //  34 (0x22) '"'
+    &HASH,        //  35 (0x23) '#'
+    &DOLLAR,      //  36 (0x24) '$'
+    &PERCENT,     //  37 (0x25) '%'
+    &AMPERSAND,   //  38 (0x26) '&'
+    &APOSTROPHE,  //  39 (0x27) "'"
+    &LPAREN,      //  40 (0x28) '('
+    &RPAREN,      //  41 (0x29) ')'
+    &ASTERISK,    //  42 (0x2a) '*'
+    &PLUS,        //  43 (0x2b) '+'
+    &COMMA,       //  44 (0x2c) ','
+    &MINUS,       //  45 (0x2d) '-'
+    &PERIOD,      //  46 (0x2e) '.'
+    &SLASH,       //  47 (0x2f) '/'
+    &DIGIT_0,     //  48 (0x30) '0'
+    &DIGIT_1,     //  49 (0x31) '1'
+    &DIGIT_2,     //  50 (0x32) '2'
+    &DIGIT_3,     //  51 (0x33) '3'
+    &DIGIT_4,     //  52 (0x34) '4'
+    &DIGIT_5,     //  53 (0x35) '5'
+    &DIGIT_6,     //  54 (0x36) '6'
+    &DIGIT_7,     //  55 (0x37) '7'
+    &DIGIT_8,     //  56 (0x38) '8'
+    &DIGIT_9,     //  57 (0x39) '9'
+    &COLON,       //  58 (0x3a) ':'
+    &SEMICOLON,   //  59 (0x3b) ';'
+    &LESS,        //  60 (0x3c) '<'
+    &EQUALS,      //  61 (0x3d) '='
+    &GREATER,     //  62 (0x3e) '>'
+    &QUESTION,    //  63 (0x3f) '?'
+    &AT,          //  64 (0x40) '@'
+    &UPPER_A,     //  65 (0x41) 'A'
+    &UPPER_B,     //  66 (0x42) 'B'
+    &UPPER_C,     //  67 (0x43) 'C'
+    &UPPER_D,     //  68 (0x44) 'D'
+    &UPPER_E,     //  69 (0x45) 'E'
+    &UPPER_F,     //  70 (0x46) 'F'
+    &UPPER_G,     //  71 (0x47) 'G'
+    &UPPER_H,     //  72 (0x48) 'H'
+    &UPPER_I,     //  73 (0x49) 'I'
+    &UPPER_J,     //  74 (0x4a) 'J'
+    &UPPER_K,     //  75 (0x4b) 'K'
+    &UPPER_L,     //  76 (0x4c) 'L'
+    &UPPER_M,     //  77 (0x4d) 'M'
+    &UPPER_N,     //  78 (0x4e) 'N'
+    &UPPER_O,     //  79 (0x4f) 'O'
+    &UPPER_P,     //  80 (0x50) 'P'
+    &UPPER_Q,     //  81 (0x51) 'Q'
+    &UPPER_R,     //  82 (0x52) 'R'
+    &UPPER_S,     //  83 (0x53) 'S'
+    &UPPER_T,     //  84 (0x54) 'T'
+    &UPPER_U,     //  85 (0x55) 'U'
+    &UPPER_V,     //  86 (0x56) 'V'
+    &UPPER_W,     //  87 (0x57) 'W'
+    &UPPER_X,     //  88 (0x58) 'X'
+    &UPPER_Y,     //  89 (0x59) 'Y'
+    &UPPER_Z,     //  90 (0x5a) 'Z'
+    &LBRACKET,    //  91 (0x5b) '['
+    &BACKSLASH,   //  92 (0x5c) '\\'
+    &RBRACKET,    //  93 (0x5d) ']'
+    &CARET,       //  94 (0x5e) '^'
+    &UNDERSCORE,  //  95 (0x5f) '_'
+    &BACKTICK,    //  96 (0x60) '`'
+    &UPPER_A,     //  97 (0x61) 'a' -> 'A'
+    &UPPER_B,     //  98 (0x62) 'b' -> 'B'
+    &UPPER_C,     //  99 (0x63) 'c' -> 'C'
+    &UPPER_D,     // 100 (0x64) 'd' -> 'D'
+    &UPPER_E,     // 101 (0x65) 'e' -> 'E'
+    &UPPER_F,     // 102 (0x66) 'f' -> 'F'
+    &UPPER_G,     // 103 (0x67) 'g' -> 'G'
+    &UPPER_H,     // 104 (0x68) 'h' -> 'H'
+    &UPPER_I,     // 105 (0x69) 'i' -> 'I'
+    &UPPER_J,     // 106 (0x6a) 'j' -> 'J'
+    &UPPER_K,     // 107 (0x6b) 'k' -> 'K'
+    &UPPER_L,     // 108 (0x6c) 'l' -> 'L'
+    &UPPER_M,     // 109 (0x6d) 'm' -> 'M'
+    &UPPER_N,     // 110 (0x6e) 'n' -> 'N'
+    &UPPER_O,     // 111 (0x6f) 'o' -> 'O'
+    &UPPER_P,     // 112 (0x70) 'p' -> 'P'
+    &UPPER_Q,     // 113 (0x71) 'q' -> 'Q'
+    &UPPER_R,     // 114 (0x72) 'r' -> 'R'
+    &UPPER_S,     // 115 (0x73) 's' -> 'S'
+    &UPPER_T,     // 116 (0x74) 't' -> 'T'
+    &UPPER_U,     // 117 (0x75) 'u' -> 'U'
+    &UPPER_V,     // 118 (0x76) 'v' -> 'V'
+    &UPPER_W,     // 119 (0x77) 'w' -> 'W'
+    &UPPER_X,     // 120 (0x78) 'x' -> 'X'
+    &UPPER_Y,     // 121 (0x79) 'y' -> 'Y'
+    &UPPER_Z,     // 122 (0x7a) 'z' -> 'Z'
+    &LBRACE,      // 123 (0x7b) '{'
+    &PIPE,        // 124 (0x7c) '|'
+    &RBRACE,      // 125 (0x7d) '}'
+    &TILDE,       // 126 (0x7e) '~'
 ];
 
 // --- Glyph definitions -------------------------------------------------------
@@ -768,6 +763,96 @@ const UPPER_Z: Glyph = [
     [1, 1, 1, 1, 1],
 ];
 
+const LBRACKET: Glyph = [
+    [0, 1, 1, 1, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 1, 1, 0],
+];
+
+const RBRACKET: Glyph = [
+    [0, 1, 1, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 1, 1, 1, 0],
+];
+
+const CARET: Glyph = [
+    [0, 0, 1, 0, 0],
+    [0, 1, 0, 1, 0],
+    [1, 0, 0, 0, 1],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+];
+
+const UNDERSCORE: Glyph = [
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [1, 1, 1, 1, 1],
+];
+
+const BACKTICK: Glyph = [
+    [0, 1, 0, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+];
+
+const LBRACE: Glyph = [
+    [0, 0, 1, 1, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [1, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [0, 0, 1, 1, 0],
+];
+
+const PIPE: Glyph = [
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+    [0, 0, 1, 0, 0],
+];
+
+const RBRACE: Glyph = [
+    [0, 1, 1, 0, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 1],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 1, 0],
+    [0, 1, 1, 0, 0],
+];
+
+const TILDE: Glyph = [
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 0],
+    [1, 0, 1, 0, 1],
+    [0, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0],
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -928,5 +1013,33 @@ mod tests {
         // Verify diagonal pixels from top-left (0,0) to bottom-right (4,6)
         assert_eq!(glyph[0][0], 1);
         assert_eq!(glyph[6][4], 1);
+    }
+
+    #[test]
+    fn test_all_printable_ascii_32_to_126_have_glyphs() {
+        let font = Font::new();
+        for code in 32u8..=126u8 {
+            let ch = code as char;
+            let glyph = font
+                .get_glyph(ch)
+                .unwrap_or_else(|| panic!("ASCII {} ('{}') must have a glyph", code, ch));
+            if ch != ' ' {
+                let lit = glyph.iter().flatten().any(|&px| px != 0);
+                assert!(
+                    lit,
+                    "Glyph for '{}' (ASCII {}) should not be blank",
+                    ch, code
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_unicode_with_lowercase_low_byte_returns_none() {
+        let font = Font::new();
+        // '\u{0161}' ('š') has low byte 0x61 ('a'); must not truncate to ASCII 'a'
+        assert!(font.get_glyph('\u{0161}').is_none());
+        assert!(font.get_glyph('ä').is_none());
+        assert!(font.get_glyph('ö').is_none());
     }
 }

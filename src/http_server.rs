@@ -3,11 +3,17 @@
 //! URL-decoding and response shaping lives in the host-testable
 //! `http_request` module.
 
+#![cfg(not(tarpaulin_include))]
+
 use crate::DISPLAY_COMMAND;
 use embassy_net::{tcp::TcpSocket, Stack};
+use embassy_time::{with_timeout, Duration};
 use embedded_io_async::Write;
 use esp32_led_matrix::http_request;
 use log::{debug, info};
+
+/// Socket I/O timeout so idle or half-open connections cannot block the single-listener server.
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Run the HTTP server forever, accepting one connection at a time.
 #[embassy_executor::task]
@@ -24,6 +30,7 @@ pub async fn run_http_server(stack: &'static Stack<'static>) {
 
     loop {
         let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
+        socket.set_timeout(Some(SOCKET_TIMEOUT));
 
         if let Err(e) = socket.accept(80).await {
             debug!("Accept error: {:?}", e);
@@ -33,7 +40,10 @@ pub async fn run_http_server(stack: &'static Stack<'static>) {
 
         let response = match read_request(&mut socket).await {
             Some(buf) => http_request::dispatch(&buf),
-            None => continue,
+            None => {
+                socket.close();
+                continue;
+            }
         };
 
         // Take ownership of the optional display command *before* the body
@@ -49,13 +59,18 @@ pub async fn run_http_server(stack: &'static Stack<'static>) {
 }
 
 /// Read one HTTP request into a fixed buffer. Returns `None` on read
-/// errors so the caller can move on to the next connection.
+/// errors, EOF, or timeout so the caller can move on to the next connection.
 async fn read_request(socket: &mut TcpSocket<'_>) -> Option<[u8; 512]> {
     let mut buf = [0u8; 512];
-    match socket.read(&mut buf).await {
-        Ok(_) => Some(buf),
-        Err(e) => {
+    match with_timeout(SOCKET_TIMEOUT, socket.read(&mut buf)).await {
+        Ok(Ok(0)) => None,
+        Ok(Ok(_)) => Some(buf),
+        Ok(Err(e)) => {
             debug!("Read error: {:?}", e);
+            None
+        }
+        Err(_) => {
+            debug!("Read timed out");
             None
         }
     }

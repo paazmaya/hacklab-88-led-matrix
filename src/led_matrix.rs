@@ -66,10 +66,11 @@ use esp32_led_matrix::chain_mapper::{self, CHAIN_LEN, SCANLINES};
 use esp32_led_matrix::frame_buffer::FrameBuffer;
 
 /// Configuration1 register value, per the wiki:
-///   - scanline count = 11
-///   - GCLK multiplier enabled
-///   - 16-bit PWM (not 13-bit)
-///   - current gain = 5 (room lighting)
+/// - scanline count = 11
+/// - GCLK multiplier enabled
+/// - 16-bit PWM (not 13-bit)
+/// - current gain = 5 (room lighting)
+///
 /// The wiki recommends `0x0A45`. The Teensy reference design uses `0x0A4B`
 /// (current gain 11). We use the wiki value.
 const CONFIG_REGISTER_1: u16 = 0x0A45;
@@ -171,6 +172,7 @@ impl LedMatrix {
     /// |11 | `dr2`    | DR2               | GPIO10        | red   data chain 2 |
     /// |12 | `dg2`    | DG2               | GPIO20        | green data chain 2 (UART RXD) |
     /// |13 | `db2`    | DB2               | GPIO21        | blue  data chain 2 (UART TXD) |
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         gclk: Output<'static>,
         dclk: Output<'static>,

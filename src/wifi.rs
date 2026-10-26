@@ -2,6 +2,8 @@
 //!
 //! Handles WiFi connection using the pure Rust esp-radio crate with embassy-net.
 
+#![cfg(not(tarpaulin_include))]
+
 extern crate alloc;
 
 use core::fmt::Write;

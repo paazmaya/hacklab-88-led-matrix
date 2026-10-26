@@ -21,6 +21,7 @@
 //! Embassy tasks.
 
 #![no_std]
+#![deny(missing_docs)]
 
 pub mod bit_stream;
 pub mod chain_mapper;

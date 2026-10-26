@@ -4,6 +4,7 @@
 //! logic. No GPIO dependencies, so it can be unit-tested on the host.
 
 use crate::font::Font;
+use crate::status_indicator::{STATUS_PIXEL_X, STATUS_PIXEL_Y};
 use crate::{MATRIX_HEIGHT, MATRIX_WIDTH};
 
 /// RGB color for a single pixel (16-bit per channel).
@@ -145,12 +146,12 @@ impl FrameBuffer {
             .all(|row| row.iter().all(|px| *px == [0, 0, 0]))
     }
 
-    /// Returns `true` if any pixel outside of the status indicator pixel at (87, 0)
-    /// is non-black.
+    /// Returns `true` if any pixel outside of the status indicator pixel at
+    /// `(`[`STATUS_PIXEL_X`]`, `[`STATUS_PIXEL_Y`]`)` is non-black.
     pub fn has_content(&self) -> bool {
         for y in 0..MATRIX_HEIGHT {
             for x in 0..MATRIX_WIDTH {
-                if x == 87 && y == 0 {
+                if x == STATUS_PIXEL_X && y == STATUS_PIXEL_Y {
                     continue;
                 }
                 if self.pixels[y][x] != [0, 0, 0] {

@@ -5,8 +5,13 @@
 
 #define MATRIX_WIDTH 88
 #define MATRIX_HEIGHT 88
+#define ICS_PER_CHAIN 22
+#define PWM_BITS 16
 #define CHAIN_LEN 44
 #define SCANLINES 11
+#define LEDS_PER_IC 16
+#define TOTAL_CYCLES (SCANLINES * LEDS_PER_IC)
+#define DCLKS_PER_CYCLE (ICS_PER_CHAIN * PWM_BITS)
 
 typedef struct {
   pin_t pin_gclk;
@@ -27,16 +32,14 @@ typedef struct {
   uint32_t fb_width;
   uint32_t fb_height;
 
-  uint32_t fb_data[MATRIX_HEIGHT][MATRIX_WIDTH]; // RGBA8888 for Wokwi Framebuffer
+  uint32_t fb_data[MATRIX_HEIGHT][MATRIX_WIDTH]; // RGBA8888 back-buffer for Wokwi Framebuffer
 
-  // Shift registers for the 6 chains (44 IC outputs per chain)
-  uint8_t shift_r1[CHAIN_LEN];
-  uint8_t shift_g1[CHAIN_LEN];
-  uint8_t shift_b1[CHAIN_LEN];
-  uint8_t shift_r2[CHAIN_LEN];
-  uint8_t shift_g2[CHAIN_LEN];
-  uint8_t shift_b2[CHAIN_LEN];
-  uint32_t shift_idx;
+  // 16-bit PWM shift registers for the 6 parallel chains (22 ICs per chain)
+  uint16_t data_r[CHAIN_LEN];
+  uint16_t data_g[CHAIN_LEN];
+  uint16_t data_b[CHAIN_LEN];
+  uint32_t dclk_idx;
+  uint32_t latch_cycle;
 
   uint32_t le_pulse_count;
   bool le_high;
@@ -47,18 +50,33 @@ static void on_dclk_change(void *user_data, pin_t pin, uint32_t value) {
   if (value == HIGH) {
     if (chip->le_high) {
       chip->le_pulse_count++;
-      return;
     }
 
-    // Shift in 1 bit on each of the 6 parallel chains
-    uint32_t idx = chip->shift_idx % CHAIN_LEN;
-    chip->shift_r1[idx] = pin_read(chip->pin_dr1);
-    chip->shift_g1[idx] = pin_read(chip->pin_dg1);
-    chip->shift_b1[idx] = pin_read(chip->pin_db1);
-    chip->shift_r2[idx] = pin_read(chip->pin_dr2);
-    chip->shift_g2[idx] = pin_read(chip->pin_dg2);
-    chip->shift_b2[idx] = pin_read(chip->pin_db2);
-    chip->shift_idx++;
+    // Shift in 1 bit (MSB-first) on each of the 6 parallel chains.
+    // Note: on the 352nd DCLK of a data cycle, LE is held high for the Data Latch
+    // strobe while simultaneously clocking in the final LSB of IC 21.
+    if (chip->dclk_idx < DCLKS_PER_CYCLE) {
+      uint32_t ic = chip->dclk_idx / PWM_BITS;
+      uint32_t bit_pos = chip->dclk_idx % PWM_BITS;
+      uint32_t bit_idx = (PWM_BITS - 1) - bit_pos;
+
+      if (bit_pos == 0) {
+        chip->data_r[ic] = 0;
+        chip->data_g[ic] = 0;
+        chip->data_b[ic] = 0;
+        chip->data_r[ic + ICS_PER_CHAIN] = 0;
+        chip->data_g[ic + ICS_PER_CHAIN] = 0;
+        chip->data_b[ic + ICS_PER_CHAIN] = 0;
+      }
+
+      chip->data_r[ic] |= (uint16_t)(pin_read(chip->pin_dr1) & 1) << bit_idx;
+      chip->data_g[ic] |= (uint16_t)(pin_read(chip->pin_dg1) & 1) << bit_idx;
+      chip->data_b[ic] |= (uint16_t)(pin_read(chip->pin_db1) & 1) << bit_idx;
+      chip->data_r[ic + ICS_PER_CHAIN] |= (uint16_t)(pin_read(chip->pin_dr2) & 1) << bit_idx;
+      chip->data_g[ic + ICS_PER_CHAIN] |= (uint16_t)(pin_read(chip->pin_dg2) & 1) << bit_idx;
+      chip->data_b[ic + ICS_PER_CHAIN] |= (uint16_t)(pin_read(chip->pin_db2) & 1) << bit_idx;
+      chip->dclk_idx++;
+    }
   }
 }
 
@@ -72,38 +90,51 @@ static void on_le_change(void *user_data, pin_t pin, uint32_t value) {
     uint32_t cmd = chip->le_pulse_count;
 
     if (cmd == 1) {
-      // Data Latch: copy current shift data to active scanline
-      uint32_t addr = (pin_read(chip->pin_a0)) |
-                      (pin_read(chip->pin_a1) << 1) |
-                      (pin_read(chip->pin_a2) << 2) |
-                      (pin_read(chip->pin_a3) << 3);
+      // Data Latch: decode the 44-pixel chain vector for the current (scanline, led)
+      // cycle using the exact inverse of chain_mapper::compute_chain_data.
+      uint32_t scanline = chip->latch_cycle / LEDS_PER_IC;
+      uint32_t led = chip->latch_cycle % LEDS_PER_IC;
 
-      if (addr < SCANLINES) {
-        // Map chain data to rows (chain 1: 0..43, chain 2: 44..87)
-        for (uint32_t i = 0; i < CHAIN_LEN; i++) {
-          uint32_t row1 = addr * 4 + (i / 11);
-          uint32_t col = (i % 11) * 8;
-          uint32_t row2 = 44 + row1;
+      if (scanline < SCANLINES) {
+        uint32_t led_row = (led < 8) ? 11 : 0;
+        uint32_t led_col = led % 8;
+        if (led_row == 11) {
+          led_col = 7 - led_col;
+        }
 
-          if (row1 < 44 && col < MATRIX_WIDTH) {
-            uint8_t r = chip->shift_r1[i] ? 255 : 0;
-            uint8_t g = chip->shift_g1[i] ? 255 : 0;
-            uint8_t b = chip->shift_b1[i] ? 255 : 0;
-            chip->fb_data[row1][col] = 0xFF000000 | (b << 16) | (g << 8) | r;
+        const uint32_t starts[4] = {33, 22, 11, 0};
+        uint32_t row = scanline + led_row;
+
+        for (uint32_t b = 0; b < 4; b++) {
+          uint32_t start = starts[b];
+          for (uint32_t i = 0; i < 11; i++) {
+            uint32_t col = 8 * i + led_col;
+            uint32_t idx = start + i;
+            if (row < MATRIX_HEIGHT && col < MATRIX_WIDTH) {
+              uint8_t r8 = (uint8_t)(chip->data_r[idx] >> 8);
+              uint8_t g8 = (uint8_t)(chip->data_g[idx] >> 8);
+              uint8_t b8 = (uint8_t)(chip->data_b[idx] >> 8);
+              chip->fb_data[row][col] = 0xFF000000u | ((uint32_t)b8 << 16) | ((uint32_t)g8 << 8) | (uint32_t)r8;
+            }
           }
-          if (row2 < MATRIX_HEIGHT && col < MATRIX_WIDTH) {
-            uint8_t r = chip->shift_r2[i] ? 255 : 0;
-            uint8_t g = chip->shift_g2[i] ? 255 : 0;
-            uint8_t b = chip->shift_b2[i] ? 255 : 0;
-            chip->fb_data[row2][col] = 0xFF000000 | (b << 16) | (g << 8) | r;
-          }
+          row += 22;
         }
       }
-      chip->shift_idx = 0;
+
+      chip->latch_cycle = (chip->latch_cycle + 1) % TOTAL_CYCLES;
+      chip->dclk_idx = 0;
     } else if (cmd == 2) {
       // VSYNC: Buffer swap / update display
+      chip->latch_cycle = 0;
+      chip->dclk_idx = 0;
       if (chip->fb) {
         buffer_write(chip->fb, 0, chip->fb_data, sizeof(chip->fb_data));
+      }
+    } else {
+      // Reset (10), PreActive (14), WriteConfig (4), or other commands reset shift counters
+      chip->dclk_idx = 0;
+      if (cmd == 10) {
+        chip->latch_cycle = 0;
       }
     }
   }
