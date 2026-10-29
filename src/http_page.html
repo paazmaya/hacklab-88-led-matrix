@@ -194,7 +194,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label for="brightness">Brightness: <span id="bright-val">50%</span></label>
+          <label for="brightness">Brightness: <span id="bright-val">5%</span></label>
           <input
             type="range"
             id="brightness"
@@ -202,7 +202,7 @@
             min="5"
             max="100"
             step="5"
-            value="50"
+            value="5"
             oninput="document.getElementById('bright-val').innerText = this.value + '%'"
             onchange="fetch('/brightness?val=' + this.value)"
           />

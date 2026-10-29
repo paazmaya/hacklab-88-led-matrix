@@ -36,7 +36,7 @@ flowchart TD
 ### Key Features
 
 - **88×88 RGB Matrix Control**: Pure Rust driver using GPIO bit-banging across 6 parallel shift-register chains.
-- **Web-Adjustable Brightness (5%–100%)**: Default 50% brightness for pleasant indoor viewing that cuts peak LED power consumption in half out-of-the-box.
+- **Web-Adjustable Brightness (5%–100%)**: Starts at a very dim **5% brightness** by default, with an automatic active-pixel power budget check (`safe_brightness_for_budget`) so the panel can safely run on a separate low-current USB charger during bench testing without tripping over-current protection.
 - **Power Optimization**: Lossless 16-bit PWM scaling, reduced multiplex cycles when idle, and adaptive CPU sleeping (relaxing from 1 ms up to 50 ms when blank).
 - **Embedded Web Interface**: Modern glassmorphism web UI with real-time brightness slider, RGB color picker, coordinates, and clear options.
 - **Top-Right Status Indicator**: Single non-intrusive status pixel reporting network and system states.
@@ -228,6 +228,43 @@ In both arrangements:
 Brightness is controlled by the ESP32 through the matrix protocol: the driver
 scales the 16-bit PWM data before shifting it to the panel. It is not necessary
 or appropriate to switch the matrix supply with relays to dim individual LEDs.
+
+#### Dual-Charger Setup (Two Separate 5 V USB Chargers)
+
+When using two separate 5 V USB chargers (for example during bench testing, where the firmware starts at a dim 5% brightness and automatically caps active-pixel current draw to ~1.5 A via `MAX_SAFE_USB_BRIGHTNESS`), **keep the two `+5V` lines completely isolated** and **connect all `GND` lines together**:
+
+```
+┌──────────────────────┐              ┌──────────────────────┐
+│   USB Charger #1     │              │   USB Charger #2     │
+│  (5V for ESP32-C3)   │              │  (5V for LED Matrix) │
+└──────┬────────┬──────┘              └──────┬────────┬──────┘
+   +5V │        │ GND                    GND │        │ +5V
+       │        │                            │        │
+       ▼        ▼                            │        ▼
+  ┌──────────────────┐                       │   ┌─────────────────────────┐
+  │ ESP32-C3         │                       │   │ LED Matrix              │
+  │ SuperMini        │                       │   │ (34-pin connector)      │
+  │                  │   13 GPIO Signals     │   │                         │
+  │  GPIO 0..10,20,21├───────────────────────┼──►│ Pins 9..17, 31..34      │
+  │                  │                       │   │                         │
+  │              5V  │ (Leave unconnected    │   │ +5V: Pins 3–8, 20–25    │
+  │                  │  if powered via USB)  │   │      (12 pins total)    │
+  │                  │                       │   │                         │
+  │              GND ├───────────────────────┴───┤ GND: Pins 1–2, 18–19    │
+  └──────────────────┘      COMMON GROUND        │      (4 pins total)     │
+                         (MUST BE CONNECTED!)    └─────────────────────────┘
+```
+
+1. **Charger #1 → ESP32-C3 SuperMini:**
+   - **Via USB port:** Plug Charger #1 into the ESP32-C3's onboard USB port (leave the ESP32's `5V` pin unconnected).
+   - **Or via breakout pins:** Connect Charger #1's `+5V` wire to the ESP32's `5V` pin and its `GND` wire to the ESP32's `GND` pin.
+2. **Charger #2 → LED Matrix (34-Pin Header):**
+   - Connect Charger #2's **`+5V`** to all **12 `+5V` pins** on the matrix connector (**Pins 3–8** and **Pins 20–25**).
+   - Connect Charger #2's **`GND`** to all **4 `GND` pins** on the matrix connector (**Pins 1–2** and **Pins 18–19**).
+3. **Common Ground (Required):**
+   - Connect a wire between the **ESP32-C3 `GND` pin** and the **LED Matrix `GND` (Pins 1–2, 18–19 / Charger #2 `GND`)** so the 3.3 V GPIO signals have a shared voltage reference.
+4. **Never Tie `+5V` Lines Together:**
+   - Do **not** connect the ESP32's `5V` pin or Charger #1's `+5V` to the matrix `+5V` pins. Connecting two separate 5 V regulators in parallel can cause one supply to back-feed into the other.
 
 ### 34-Pin Connector Pinout
 

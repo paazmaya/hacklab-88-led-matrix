@@ -146,7 +146,7 @@ pub struct LedMatrix {
     /// at the scanline 10 -> 0 frame boundary to swap to the front.
     vsync_pending: bool,
 
-    /// Display brightness percentage (5..=100), defaults to 50%.
+    /// Display brightness percentage (5..=100), defaults to 5% (dim startup for safe power draw).
     brightness: u8,
 }
 
@@ -376,7 +376,11 @@ impl LedMatrix {
         // Phase 1: If pixel data changed, shift new frame data to the back buffer.
         if self.dirty {
             let mut data = [[0u16; 3]; CHAIN_LEN];
-            let brightness = self.brightness;
+            // Enforce power budget check so active pixels never exceed safe USB current draw
+            let brightness = self.buffer.safe_brightness_for_budget(
+                self.brightness,
+                esp32_led_matrix::MAX_SAFE_USB_BRIGHTNESS,
+            );
             for scanline in 0..SCANLINES {
                 for led in 0..PWM_BITS {
                     {

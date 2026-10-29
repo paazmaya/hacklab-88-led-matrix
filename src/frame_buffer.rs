@@ -161,6 +161,40 @@ impl FrameBuffer {
         }
         false
     }
+
+    /// Compute the maximum safe brightness percentage (`5..=100`) that keeps the
+    /// current frame's estimated LED current draw at or below `budget_percent` of
+    /// full-white panel power (where `100` = 10 A full-panel white, `15` = 1.5 A
+    /// suitable for a standard 2 A Micro-USB charger).
+    ///
+    /// If the frame is blank or the requested `requested_brightness` is already within
+    /// the power budget, `requested_brightness` (clamped to `5..=100`) is returned unchanged.
+    pub fn safe_brightness_for_budget(&self, requested_brightness: u8, budget_percent: u8) -> u8 {
+        let req = requested_brightness.clamp(crate::MIN_BRIGHTNESS, 100);
+        let budget = budget_percent.clamp(crate::MIN_BRIGHTNESS, 100) as u64;
+
+        let mut total_channel_sum: u64 = 0;
+        for row in self.pixels.iter() {
+            for px in row.iter() {
+                total_channel_sum += px[0] as u64 + px[1] as u64 + px[2] as u64;
+            }
+        }
+
+        if total_channel_sum == 0 {
+            return req;
+        }
+
+        // Full white across all 88x88 pixels at 100% brightness:
+        // 7744 pixels * 3 channels * 65535 = 1_522_509_120
+        const MAX_PANEL_SUM: u64 =
+            (MATRIX_WIDTH as u64) * (MATRIX_HEIGHT as u64) * 3 * (u16::MAX as u64);
+
+        // Effective panel load at 100% brightness (in percent, rounded up):
+        // We want: (total_channel_sum * allowed_brightness) / MAX_PANEL_SUM <= budget
+        let max_allowed = (budget * MAX_PANEL_SUM) / total_channel_sum;
+        let capped = max_allowed.clamp(crate::MIN_BRIGHTNESS as u64, 100) as u8;
+        req.min(capped)
+    }
 }
 
 #[cfg(test)]
@@ -364,5 +398,30 @@ mod tests {
         fb.clear();
         assert!(fb.is_blank());
         assert!(!fb.has_content());
+    }
+
+    #[test]
+    fn safe_brightness_for_budget_limits_heavy_frames_and_allows_sparse_text() {
+        let mut fb = FrameBuffer::new();
+
+        // 1. Blank frame: returns requested brightness unchanged
+        assert_eq!(fb.safe_brightness_for_budget(50, 15), 50);
+        assert_eq!(fb.safe_brightness_for_budget(5, 15), 5);
+
+        // 2. Sparse text ("HELLO"): only a few dozen pixels out of 7744 are lit,
+        //    so even 100% brightness stays well under the 15% total panel power budget.
+        fb.display_text("HELLO");
+        assert_eq!(fb.safe_brightness_for_budget(100, 15), 100);
+
+        // 3. Full white screen (all 88x88 pixels at 0xFFFF):
+        //    Requesting 100% or 50% must be clamped down to the 15% USB budget.
+        for y in 0..MATRIX_HEIGHT {
+            for x in 0..MATRIX_WIDTH {
+                fb.set_pixel(x, y, 0xFFFF, 0xFFFF, 0xFFFF);
+            }
+        }
+        assert_eq!(fb.safe_brightness_for_budget(100, 15), 15);
+        assert_eq!(fb.safe_brightness_for_budget(50, 15), 15);
+        assert_eq!(fb.safe_brightness_for_budget(5, 15), 5);
     }
 }

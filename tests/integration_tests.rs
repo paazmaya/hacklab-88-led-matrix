@@ -385,9 +385,11 @@ fn status_indicator_apply_detects_color_changes() {
 #[test]
 fn http_brightness_command_scales_chain_data_output() {
     use esp32_led_matrix::chain_mapper::compute_full_frame_with_brightness;
-    use esp32_led_matrix::DEFAULT_BRIGHTNESS;
+    use esp32_led_matrix::{DEFAULT_BRIGHTNESS, MAX_SAFE_USB_BRIGHTNESS, MIN_BRIGHTNESS};
 
-    assert_eq!(DEFAULT_BRIGHTNESS, 50);
+    assert_eq!(DEFAULT_BRIGHTNESS, 5);
+    assert_eq!(MIN_BRIGHTNESS, 5);
+    assert_eq!(MAX_SAFE_USB_BRIGHTNESS, 15);
 
     // 1. Simulate brightness query parameter
     let req = b"GET /brightness?val=50 HTTP/1.1\r\n\r\n";

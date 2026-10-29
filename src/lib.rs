@@ -36,5 +36,13 @@ pub const MATRIX_WIDTH: usize = 88;
 /// Vertical resolution of the LED matrix in pixels.
 pub const MATRIX_HEIGHT: usize = 88;
 
+/// Minimum allowed display brightness percentage.
+pub const MIN_BRIGHTNESS: u8 = 5;
+
 /// Default display brightness percentage (5..=100%).
-pub const DEFAULT_BRIGHTNESS: u8 = 50;
+/// Starts at the lowest dim setting (5%) so the display is safe on low-current
+/// supplies (such as a separate USB charger) out of the box.
+pub const DEFAULT_BRIGHTNESS: u8 = 5;
+
+/// Maximum safe brightness percentage when powered from a standard ~2A USB charger.
+pub const MAX_SAFE_USB_BRIGHTNESS: u8 = 15;
