@@ -1,10 +1,15 @@
 [package]
 name = "esp32-led-matrix"
 version = "0.1.0"
-authors = ["LED Matrix Controller"]
+authors = ["Juga Paazmaya <paazmaya@yahoo.com>"]
 edition = "2021"
 license = "MIT"
+homepage = "https://github.com/paazmaya/hacklab-88-led-matrix"
+repository = "https://github.com/paazmaya/hacklab-88-led-matrix"
 description = "ESP32-C3 Rust application for controlling 88x88 RGB LED matrix with WiFi HTTP server"
+keywords = ["esp32", "led-matrix", "embedded", "wifi", "embassy"]
+categories = ["embedded", "no-std"]
+publish = false
 
 [dependencies]
 log = "0.4.34"

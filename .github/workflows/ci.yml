@@ -9,27 +9,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - run: rustup target add riscv32imc-unknown-none-elf
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --message-format=json -- -D warnings > clippy.json
       - run: cargo clippy --target riscv32imc-unknown-none-elf --features esp32 -- -D warnings
-      - uses: cargo-bins/cargo-binstall@v1.25.3
+      - uses: cargo-bins/cargo-binstall@851112458b5f28a29e5bc14a690c3f283d9dcc6f # v1.26.2
       - run: cargo binstall -y cargo-tarpaulin
       - run: cargo tarpaulin --fail-under 98 --out Xml --out Lcov
-      - uses: SonarSource/sonarqube-scan-action@v8
+      - uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      - uses: codacy/codacy-coverage-reporter-action@v1
+      - uses: codacy/codacy-coverage-reporter-action@89d6c85cfafaec52c72b6c5e8b2878d33104c699 # v1.3.0
         with:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           coverage-reports: lcov.info
