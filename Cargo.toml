@@ -3,6 +3,7 @@ name = "esp32-led-matrix"
 version = "0.1.0"
 authors = ["Juga Paazmaya <paazmaya@yahoo.com>"]
 edition = "2021"
+rust-version = "1.92"
 license = "MIT"
 homepage = "https://github.com/paazmaya/hacklab-88-led-matrix"
 repository = "https://github.com/paazmaya/hacklab-88-led-matrix"
@@ -12,7 +13,7 @@ categories = ["embedded", "no-std"]
 publish = false
 
 [dependencies]
-log = "0.4.34"
+log = "0.4.35"
 heapless = "0.9.3"
 
 # ESP32 HAL and support crates - optional for library, required for binary
