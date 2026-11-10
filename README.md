@@ -2,6 +2,9 @@
 
 A **pure Rust** ESP32-C3 application for controlling an 88x88 RGB LED matrix display with WiFi connectivity and HTTP web interface.
 
+[![CI](https://github.com/paazmaya/hacklab-88-led-matrix/actions/workflows/ci.yml/badge.svg)](https://github.com/paazmaya/hacklab-88-led-matrix/actions/workflows/ci.yml)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=paazmaya_hacklab-88-led-matrix&metric=code_smells)](https://sonarcloud.io/dashboard?id=paazmaya_hacklab-88-led-matrix)
+
 ![88x88 Logo](./icon.png)
 
 > **Built with esp-hal** - No ESP-IDF installation required! Works on Windows, Linux, and macOS.
