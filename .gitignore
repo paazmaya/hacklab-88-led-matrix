@@ -25,3 +25,4 @@ signals.vcd
 clippy.json
 cobertura.xml
 lcov.info
+.DS_Store

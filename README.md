@@ -508,7 +508,13 @@ This project includes a complete [Wokwi](https://wokwi.com/) simulation configur
 ### Simulated Components
 
 - **ESP32-C3 DevKit** (`board-esp32-c3-devkitm-1`): RISC-V microcontroller running the exact embedded firmware with serial monitor connected to TX/RX and all 13 control pins (`GPIO0–GPIO10`, `GPIO20–GPIO21`) wired to the matrix chip.
-- **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi WebAssembly chip implementing the 34-pin connector, 22-IC × 16-bit PWM shift-register chains, Data Latch (`LE` + 1 `DCLK`), VSYNC (`LE` + 2 `DCLK`), and an $88 \times 88$ RGBA framebuffer.
+- **Custom 88×88 Matrix Chip** (`chips/matrix-88x88.chip.*`): A custom Wokwi WebAssembly chip modeling the physical Helsinki Hacklab matrix:
+  - Implements the complete 34-pin dual-row connector (12× 5V, 4× GND, 5× NC, and 13 logic pins).
+  - Emulates the 6 parallel serial lines (`DR1`, `DG1`, `DB1`, `DR2`, `DG2`, `DB2`) feeding two 22-IC × 16-bit PWM shift-register chains.
+  - Decodes the pulse-count command protocol on `LE` + `DCLK` (Data Latch on $N=1$, VSYNC buffer swap on $N=2$, Reset on $N=10$, PreActive on $N=14$).
+  - Inverts the physical serpentine PCB row/column routing to reconstruct the 2D Cartesian display buffer in real time.
+  - Presents an $88 \times 88$ RGBA8888 canvas via Wokwi's native framebuffer API (`framebufferInit` / `bufferWrite`).
+  - See [chips/README.md](chips/README.md) for full technical documentation on its architecture, protocol, inverse mapping mathematics, and simulation performance tradeoffs.
 - **VCD Waveform Export**: Configured in `wokwi.toml` (`vcdFile = "signals.vcd"`) so captured digital waveforms can be inspected in VS Code using Surfer, PulseView, or GTKWave.
 
 > 🛠️ **Rebuilding the Wokwi custom chip:** After editing `chips/matrix-88x88.chip.c`, run `make -C chips` (requires Docker with `wokwi/builder-clang-wasm`) to recompile `chips/matrix-88x88.chip.wasm`.
@@ -537,10 +543,12 @@ esp32-led-matrix/
 ├── wokwi.toml          # Wokwi simulator configuration & port forwarding
 ├── diagram.json        # Circuit diagram with ESP32-C3, logic analyzer & shift registers
 ├── chips/              # Custom 88x88 LED matrix chip definition for Wokwi
-│   ├── matrix-88x88.chip.json
-│   ├── matrix-88x88.chip.c
-│   ├── wokwi-api.h
-│   └── Makefile
+│   ├── matrix-88x88.chip.json # Wokwi part definition & 34-pin connector layout
+│   ├── matrix-88x88.chip.c    # C simulation logic (shift register, inverse mapping, VSYNC)
+│   ├── matrix-88x88.chip.wasm # Compiled WebAssembly simulation binary
+│   ├── wokwi-api.h            # Wokwi Custom Chips C API headers
+│   ├── Makefile               # Docker-based WASM build script
+│   └── README.md              # Detailed technical documentation for the custom chip
 ├── src/
 │   ├── main.rs         # Embedded binary entry point, pin setup & refresh loop
 │   ├── lib.rs          # Testable library root (font, framebuffer, parser, mapper)
